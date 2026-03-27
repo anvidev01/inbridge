@@ -1,0 +1,39 @@
+# .github/workflows/weekly-scrape.yml
+name: Weekly Government Data Scrape
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        cd scripts/scraper
+        pip install -r requirements.txt
+        
+    - name: Run scraper
+      run: |
+        cd scripts/scraper
+        python scraper.py
+        
+    - name: Commit and push if changed
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add -A
+        git commit -m "🤖 Auto-update: Weekly government data scrape" || exit 0
+        git push

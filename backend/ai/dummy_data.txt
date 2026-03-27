@@ -1,0 +1,10 @@
+# InBridge Government Services Reference Document
+
+## PM-KISAN Samman Nidhi
+The Pradhan Mantri Kisan Samman Nidhi (PM-KISAN) is a central sector scheme that provides income support to all landholding farmers' families in the country. Under this scheme, an amount of ₹6,000 per year is released in three equal installments of ₹2,000 each directly into the bank accounts of the beneficiaries. To apply or check status, citizens must provide their Aadhaar number or bank account number linked to the Aadhaar.
+
+## Aadhaar Card Application Process
+Aadhaar is a 12-digit individual identification number issued by the Unique Identification Authority of India (UIDAI). To enroll, a citizen must visit an Aadhaar Enrolment Centre with valid Proof of Identity (PoI) and Proof of Address (PoA) documents. Biometric information (fingerprints and iris scan) and a photograph will be captured during the enrollment process. Aadhaar updates can be done online for demographic changes, but biometric updates require a visit to the center.
+
+## Grievance Redressal Mechanism
+The Centralized Public Grievance Redress and Monitoring System (CPGRAMS) allows citizens to lodge complaints with various government departments. Standard grievances are typically resolved within 30 to 45 days. Citizens are provided a unique Tracking ID (ARN - Application Reference Number) upon successful submission. RTI matters and court-related subjudice cases are not accepted through this portal.

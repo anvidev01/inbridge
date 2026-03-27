@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: inbridge-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-inbridge}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-inbridge_secret}
+      POSTGRES_DB: ${DB_NAME:-inbridge_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../backend/db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-inbridge}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: inbridge-redis
+    command: [ "redis-server", "--requirepass", "${REDIS_PASSWORD:-redis_secret}", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru" ]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  go-api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: inbridge-api
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_URL=postgres://${DB_USER:-inbridge}:${DB_PASSWORD:-inbridge_secret}@postgres:5432/${DB_NAME:-inbridge_db}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      - UIDAI_API_URL=${UIDAI_API_URL}
+      - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY}
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+      - DIGILOCKER_CLIENT_ID=${DIGILOCKER_CLIENT_ID}
+      - DIGILOCKER_CLIENT_SECRET=${DIGILOCKER_CLIENT_SECRET}
+      - PM_KISAN_API_KEY=${PM_KISAN_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nextjs:
+    build:
+      context: ../
+      dockerfile: Dockerfile.frontend
+    container_name: inbridge-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://go-api:8080
+    depends_on:
+      - go-api
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ../backend/ai
+      dockerfile: Dockerfile
+    container_name: inbridge-ai
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_URL=postgresql://${DB_USER:-inbridge}:${DB_PASSWORD:-inbridge_secret}@postgres:5432/${DB_NAME:-inbridge_db}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-""}
+      - BHASHINI_API_KEY=${BHASHINI_API_KEY:-""}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres:
+    platform: linux/arm64
+    environment:
+      - ORBSTACK_DOMAIN=postgres.inbridge.local
+
+  redis:
+    platform: linux/arm64
+    environment:
+      - ORBSTACK_DOMAIN=redis.inbridge.local
+
+  go-api:
+    platform: linux/arm64
+    environment:
+      - ORBSTACK_DOMAIN=api.inbridge.local
+    volumes:
+      - ../backend:/app
+
+  nextjs:
+    platform: linux/arm64
+    environment:
+      - ORBSTACK_DOMAIN=app.inbridge.local
+    volumes:
+      - ../:/app
+      - /app/node_modules
+      - /app/.next
+
+  ai-service:
+    platform: linux/arm64
+    environment:
+      - ORBSTACK_DOMAIN=ai.inbridge.local
+    volumes:
+      - ../backend/ai:/app

@@ -1,0 +1,204 @@
+/* ============================================================
+   InBridge — Government of India Digital Services Platform
+   globals.css — Tailwind CSS v4 @theme design tokens + base
+   GIGW 3.0 · WCAG 2.2 AA · DPDP Act 2023
+   ============================================================ */
+
+@import "tailwindcss";
+
+/* ---- Design Tokens ---------------------------------------- */
+@theme inline {
+  /* Brand colours */
+  --color-navy: #1A237E;
+  /* Headers, primary buttons, nav */
+  --color-green: #2E7D32;
+  /* Submit buttons, success, CTAs */
+  --color-red: #C62828;
+  /* Errors, critical alerts        */
+  --color-bg: #0a0a0a;
+  /* Page background                */
+  --color-white: #FFFFFF;
+  /* Cards, form backgrounds        */
+  --color-muted: #616161;
+  /* Body text, borders             */
+
+  /* Semantic aliases */
+  --color-primary: var(--color-navy);
+  --color-success: var(--color-green);
+  --color-danger: var(--color-red);
+  --color-surface: var(--color-white);
+  --color-subtle: var(--color-muted);
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  --font-mono: 'Geist Mono', 'Menlo', 'Courier New', monospace;
+
+  /* Spacing / sizing */
+  --touch-target: 44px;
+  /* WCAG 2.5.8 minimum tap target */
+}
+
+/* ---- Reset / Base ----------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 100%;
+  /* respect user browser font-size setting */
+}
+
+body {
+  background-color: var(--color-bg);
+  color: #ededed;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-width: 320px;
+  /* mobile-first floor */
+  line-height: 1.6;
+}
+
+/* ---- Focus Ring ------------------------------------------ */
+/* WCAG 2.4.11 — visible focus indicator, min 3:1 contrast    */
+:focus-visible {
+  outline: 3px solid var(--color-navy);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---- Skip to Main Link ------------------------------------ */
+/* Rendered first in DOM, visually hidden until focused        */
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 0;
+  z-index: 9999;
+  padding: 12px 20px;
+  background: var(--color-navy);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1rem;
+  border-radius: 0 0 8px 0;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* ---- Utilities ------------------------------------------- */
+/* Minimum touch target (WCAG 2.5.8) */
+.touch-target {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Visually-hidden but screen-reader accessible */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ---- Custom Scrollbar ------------------------------------ */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+/* ---- Animations ------------------------------------------ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-mic {
+
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(26, 35, 126, 0.4);
+  }
+
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 10px rgba(26, 35, 126, 0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease both;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease both;
+}
+
+.animate-pulse-mic {
+  animation: pulse-mic 1.4s ease-in-out infinite;
+}
+
+/* Print accessibility */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
