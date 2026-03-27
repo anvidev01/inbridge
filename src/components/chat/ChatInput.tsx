@@ -161,18 +161,56 @@ export function ChatInput({ input, onInputChange, onSend, isStreaming, language,
             />
 
             {/* Input Pill */}
-            <div className="relative w-full bg-[#0a0a0a] rounded-full border border-neutral-800 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] pl-4 pr-2 py-2 flex items-center transition-shadow focus-within:shadow-[0_4px_20px_-3px_rgba(0,0,0,0.08)] focus-within:border-neutral-700">
+            <div className="relative w-full bg-[#0a0a0a] rounded-[24px] border border-neutral-800 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] pl-2 pr-1.5 py-1.5 flex items-center transition-shadow focus-within:shadow-[0_4px_20px_-3px_rgba(0,0,0,0.08)] focus-within:border-neutral-700">
 
-                {/* Paperclip → triggers file picker */}
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-[#737373] hover:text-neutral-300 transition-colors rounded-full hover:bg-[#171717] flex-shrink-0"
-                    aria-label="Attach file"
-                    title="Attach file"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
-                </button>
+                <div className="flex items-center gap-0.5 shrink-0 pl-1">
+                    {/* Paperclip → triggers file picker */}
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-2 text-[#737373] hover:text-neutral-300 transition-colors rounded-full hover:bg-[#171717] relative"
+                        aria-label="Attach file"
+                        title="Attach file"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+                        {attachedFiles.length > 0 && <span className="absolute 1 top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full"></span>}
+                    </button>
+
+                    {/* Focus Toggles */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setShowFocus(v => !v); setShowEmoji(false); }}
+                            className={`p-2 transition-colors rounded-full ${activeFocus ? 'text-indigo-400 bg-indigo-500/10' : 'text-[#737373] hover:text-neutral-300 hover:bg-[#171717]'}`}
+                            title="Filter to a specific topic"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" /></svg>
+                        </button>
+
+                        {showFocus && (
+                            <div onClick={e => e.stopPropagation()} className="absolute bottom-12 left-0 bg-[#171717] border border-neutral-700 rounded-2xl p-3 shadow-xl w-72 z-50">
+                                <p className="text-xs text-neutral-500 mb-2 px-1">Narrow responses to a topic:</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {FOCUS_TOPICS.map(t => (
+                                        <button
+                                            key={t.label}
+                                            onClick={() => selectFocus(t)}
+                                            className={`px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all ${activeFocus === t.label
+                                                ? 'bg-indigo-600 border-indigo-500 text-white'
+                                                : 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-neutral-700'
+                                                }`}
+                                        >
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                    {activeFocus && (
+                                        <button onClick={clearFocus} className="px-3 py-1.5 rounded-full text-[11px] font-medium border border-red-900/50 text-red-400 hover:bg-red-900/20">Clear Filter</button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 {/* Textarea */}
                 <textarea
@@ -181,8 +219,8 @@ export function ChatInput({ input, onInputChange, onSend, isStreaming, language,
                     onChange={(e) => onInputChange(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={isStreaming}
-                    placeholder={isListening ? '🎙️ Listening… speak now' : 'Type your query here... (e.g. How do I apply for a ration card?)'}
-                    className="flex-1 bg-transparent px-3 py-2.5 outline-none resize-none text-[15px] text-neutral-200 placeholder:text-[#737373] min-h-[44px] max-h-[120px] self-center overflow-y-auto leading-relaxed"
+                    placeholder={isListening ? 'Listening...' : 'Ask InfoSetu...'}
+                    className="flex-1 bg-transparent px-2 py-2.5 outline-none resize-none text-[15px] sm:text-base text-neutral-200 placeholder:text-[#525252] min-h-[44px] max-h-[120px] self-center overflow-y-auto leading-relaxed"
                     rows={1}
                     aria-label="Chat message input"
                 />
@@ -265,63 +303,9 @@ export function ChatInput({ input, onInputChange, onSend, isStreaming, language,
                 </div>
             </div>
 
-            {/* Focus + Attach action bar */}
-            <div className="flex items-center gap-3 mt-3">
-
-                {/* Focus button + popover */}
-                <div className="relative">
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setShowFocus(v => !v); setShowEmoji(false); }}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all ${activeFocus
-                            ? 'bg-indigo-600 border-indigo-500 text-white'
-                            : 'bg-[#171717] border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:text-white'
-                            }`}
-                        title="Filter to a specific topic"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" /></svg>
-                        {activeFocus ?? 'Focus'}
-                        {activeFocus && (
-                            <span onClick={(e) => { e.stopPropagation(); clearFocus(); }} className="ml-1 opacity-70 hover:opacity-100">✕</span>
-                        )}
-                    </button>
-
-                    {showFocus && (
-                        <div onClick={e => e.stopPropagation()} className="absolute bottom-12 left-0 bg-[#171717] border border-neutral-700 rounded-2xl p-3 shadow-xl w-64 z-50">
-                            <p className="text-xs text-neutral-500 mb-2 px-1">Narrow responses to a topic:</p>
-                            <div className="flex flex-wrap gap-2">
-                                {FOCUS_TOPICS.map(t => (
-                                    <button
-                                        key={t.label}
-                                        onClick={() => selectFocus(t)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${activeFocus === t.label
-                                            ? 'bg-indigo-600 border-indigo-500 text-white'
-                                            : 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-indigo-900 hover:border-indigo-700 hover:text-white'
-                                            }`}
-                                    >
-                                        {t.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Attach button → triggers file picker */}
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 rounded-full border border-neutral-700 bg-[#171717] text-neutral-300 hover:border-neutral-500 hover:text-white text-sm font-medium transition-all"
-                    title="Attach a file"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg>
-                    Attach {attachedFiles.length > 0 && <span className="ml-1 bg-indigo-600 text-white text-[10px] rounded-full px-1.5">{attachedFiles.length}</span>}
-                </button>
-            </div>
-
             {/* Disclaimer */}
-            <p className="mt-3 text-[10px] sm:text-[11px] text-[#737373] text-center max-w-2xl px-4 leading-relaxed tracking-wide">
-                InfoSetu provides information based on current government guidelines. For sensitive legal matters, please consult official department portals.
+            <p className="mt-2 text-[10px] sm:text-[11px] text-[#525252] text-center max-w-2xl px-4 leading-relaxed tracking-wide">
+                InfoSetu provides information based on current government guidelines. Consult official portals.
             </p>
         </div>
     );
