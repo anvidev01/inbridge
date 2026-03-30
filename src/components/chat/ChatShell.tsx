@@ -16,6 +16,25 @@ export function ChatShell() {
     const [inputValue, setInputValue] = useState('');
     const [language, setLanguage] = useState<'en' | 'hi' | 'hinglish'>('en');
 
+    const GREETINGS = [
+        'Hi mate! How should I help you?',
+        'नमस्ते। आपकी कैसे सहायता करूं?',
+        'Namaste. Aapki kaise madad karu?',
+    ];
+    const [greetingIndex, setGreetingIndex] = useState(0);
+    const [greetingVisible, setGreetingVisible] = useState(true);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setGreetingVisible(false);
+            setTimeout(() => {
+                setGreetingIndex(prev => (prev + 1) % GREETINGS.length);
+                setGreetingVisible(true);
+            }, 400);
+        }, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
     const LANG_INSTRUCTIONS: Record<string, string> = {
         en: 'You MUST always reply in English only, no matter what language the user writes in. Never switch to Hindi or any other language.',
         hi: 'आपको हमेशा केवल हिंदी में जवाब देना है, चाहे उपयोगकर्ता किसी भी भाषा में लिखे। अंग्रेज़ी या किसी भी अन्य भाषा का प्रयोग बिल्कुल न करें।',
@@ -114,7 +133,15 @@ export function ChatShell() {
                     {messages.length === 0 ? (
                         /* Home State: Centered Large Search */
                         <div className="flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 sm:px-8 pb-32 animate-[fadeIn_0.5s_ease-out]">
-                            <h1 className="text-4xl font-semibold tracking-tight text-neutral-100 mb-8 font-serif">What do you want to know?</h1>
+                            <h1
+                                className="text-4xl font-semibold tracking-tight text-neutral-100 mb-8 font-serif"
+                                style={{
+                                    opacity: greetingVisible ? 1 : 0,
+                                    transition: 'opacity 0.4s ease-in-out',
+                                }}
+                            >
+                                {GREETINGS[greetingIndex]}
+                            </h1>
                             <div className="w-full">
                                 <ChatInput input={inputValue} onInputChange={setInputValue} onSend={handleSend} isStreaming={isStreaming} language={language} onLanguageChange={setLanguage} />
                             </div>
