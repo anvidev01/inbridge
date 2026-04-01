@@ -66,7 +66,7 @@ func main() {
 		// ── Auth (public, rate-limited) ──
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RateLimitMiddleware(rdb, 20, 5, 1*time.Minute))
-			r.Post("/auth/register", handlers.Register(dbPool))
+			r.Post("/auth/register", handlers.Register(dbPool, privateKey))
 			r.Post("/auth/login", handlers.Login(dbPool, privateKey))
 		})
 

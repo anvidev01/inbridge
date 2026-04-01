@@ -35,10 +35,17 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                 body: JSON.stringify(body),
             });
 
-            const data = await response.json();
+            let data: any = {};
+            const text = await response.text();
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                // Not JSON, use raw text if available
+            }
 
             if (!response.ok) {
-                throw new Error(data.error || (isSignUp ? 'Registration failed' : 'Invalid email or password'));
+                const errorMessage = data.error || text || (isSignUp ? 'Registration failed' : 'Invalid email or password');
+                throw new Error(errorMessage);
             }
 
             // Store session
@@ -110,19 +117,17 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                                 required
                             />
                         </div>
-                        {!isSignUp && (
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Password</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="••••••••"
-                                    className="w-full px-4 py-2.5 rounded-lg border border-neutral-800 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-sm"
-                                    required
-                                />
-                            </div>
-                        )}
+                        <div>
+                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Password</label>
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••"
+                                className="w-full px-4 py-2.5 rounded-lg border border-neutral-800 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-sm bg-neutral-900/50 text-white"
+                                required
+                            />
+                        </div>
 
                         <button
                             type="submit"

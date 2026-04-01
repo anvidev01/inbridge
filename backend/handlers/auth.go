@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 )
 
 type AuthRequest struct {
@@ -17,7 +18,7 @@ type AuthRequest struct {
 	Password string `json:"password"`
 }
 
-func Register(db *pgxpool.Pool) http.HandlerFunc {
+func Register(db *pgxpool.Pool, privateKey *rsa.PrivateKey) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Email       string `json:"email"`
@@ -69,8 +70,36 @@ func Register(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Generate JWT Token for immediate login
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+			"sub": citizen.ID.String(),
+			"exp": time.Now().Add(24 * time.Hour).Unix(),
+			"iat": time.Now().Unix(),
+		})
+
+		tokenString, err := token.SignedString(privateKey)
+		if err != nil {
+			log.Info().Err(err).Msg("failed to sign token during registration")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message":    "registration successful (please log in manually)",
+				"citizen_id": citizen.ID.String(),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"message": "registration successful", "citizen_id": citizen.ID.String()})
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "registration successful",
+			"token":   tokenString,
+			"citizen": map[string]interface{}{
+				"id":        citizen.ID.String(),
+				"full_name": citizen.FullName,
+				"email":     citizen.Email,
+			},
+		})
 	}
 }
 
