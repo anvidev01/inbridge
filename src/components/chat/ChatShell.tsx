@@ -59,6 +59,29 @@ export function ChatShell() {
         transport: transportRef.current,
     });
 
+    useEffect(() => {
+        const storedUser = localStorage.getItem('inbridge_user');
+        if (storedUser) {
+            try {
+                const parsed = JSON.parse(storedUser);
+                setUser(parsed.name);
+            } catch (e) {
+                localStorage.removeItem('inbridge_user');
+                localStorage.removeItem('inbridge_token');
+            }
+        }
+    }, []);
+
+    const handleLogin = (name: string) => {
+        setUser(name);
+    };
+
+    const handleLogout = () => {
+        setUser(null);
+        localStorage.removeItem('inbridge_user');
+        localStorage.removeItem('inbridge_token');
+    };
+
     const isStreaming = status === 'streaming' || status === 'submitted';
 
     // Build chat history from user messages sent so far
@@ -101,13 +124,13 @@ export function ChatShell() {
                 }}
                 user={user}
                 onOpenLogin={() => setLoginOpen(true)}
-                onLogout={() => setUser(null)}
+                onLogout={handleLogout}
             />
 
             <LoginModal
                 isOpen={loginOpen}
                 onClose={() => setLoginOpen(false)}
-                onLogin={(name) => setUser(name)}
+                onLogin={handleLogin}
             />
 
             <div key={language} className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a] h-full relative">
