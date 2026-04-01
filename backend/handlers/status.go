@@ -1,62 +1,48 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/sync/errgroup"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 )
 
-func CheckStatus() http.HandlerFunc {
+// CheckStatus queries the applications table by ARN and returns the current status.
+func CheckStatus(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		arn := chi.URLParam(r, "arn")
+		if arn == "" {
+			http.Error(w, "arn is required", http.StatusBadRequest)
+			return
+		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
+		var (
+			serviceCode string
+			status      string
+		)
 
-		g, gCtx := errgroup.WithContext(ctx)
+		err := db.QueryRow(r.Context(),
+			"SELECT service_code, status FROM applications WHERE arn = $1", arn).
+			Scan(&serviceCode, &status)
 
-		results := make(chan string, 3)
-
-		g.Go(func() error {
-			time.Sleep(1 * time.Second)
-			select {
-			case <-gCtx.Done(): return gCtx.Err()
-			default: results <- "PM-KISAN: Received"; return nil
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				http.Error(w, "application not found for the given ARN", http.StatusNotFound)
+				return
 			}
-		})
-
-		g.Go(func() error {
-			time.Sleep(2 * time.Second)
-			select {
-			case <-gCtx.Done(): return gCtx.Err()
-			default: results <- "PFMS: Pending"; return nil
-			}
-		})
-
-		g.Go(func() error {
-			time.Sleep(1 * time.Second)
-			select {
-			case <-gCtx.Done(): return gCtx.Err()
-			default: results <- "STATE: Approved"; return nil
-			}
-		})
-
-		_ = g.Wait()
-		close(results)
-
-		var statusList []string
-		for res := range results {
-			statusList = append(statusList, res)
+			log.Error().Err(err).Str("arn", arn).Msg("Failed to query application status")
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]string{
 			"arn":          arn,
-			"api_statuses": statusList,
+			"service_code": serviceCode,
+			"status":       status,
 		})
 	}
 }

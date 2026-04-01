@@ -18,10 +18,20 @@ func HealthCheck(db *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
 			dbStatus = "up"
 		}
 
-		redisStatus := "up" 
+		redisStatus := "down"
+		if err := rdb.Ping(ctx).Err(); err == nil {
+			redisStatus = "up"
+		}
+
+		overallStatus := "ok"
+		statusCode := http.StatusOK
+		if dbStatus == "down" || redisStatus == "down" {
+			overallStatus = "degraded"
+			statusCode = http.StatusServiceUnavailable
+		}
 
 		response := map[string]interface{}{
-			"status": "ok",
+			"status": overallStatus,
 			"services": map[string]string{
 				"postgres": dbStatus,
 				"redis":    redisStatus,
@@ -34,6 +44,7 @@ func HealthCheck(db *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(response)
 	}
 }

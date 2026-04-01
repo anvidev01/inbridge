@@ -7,10 +7,12 @@ import (
 	"strconv"
 )
 
+// responseRecorder captures the status code and body for post-processing.
 type responseRecorder struct {
 	http.ResponseWriter
 	body       *bytes.Buffer
 	statusCode int
+	headerSent bool
 }
 
 func (rw *responseRecorder) Write(p []byte) (int, error) {
@@ -18,10 +20,18 @@ func (rw *responseRecorder) Write(p []byte) (int, error) {
 }
 
 func (rw *responseRecorder) WriteHeader(statusCode int) {
+	if rw.headerSent {
+		return
+	}
 	rw.statusCode = statusCode
-	rw.ResponseWriter.WriteHeader(statusCode)
+	rw.headerSent = true
 }
 
+func (rw *responseRecorder) Header() http.Header {
+	return rw.ResponseWriter.Header()
+}
+
+// AadhaarMaskingMiddleware masks 12-digit Aadhaar numbers in response bodies.
 func AadhaarMaskingMiddleware(next http.Handler) http.Handler {
 	aadhaarRegex := regexp.MustCompile(`\b(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})\b`)
 
@@ -37,11 +47,9 @@ func AadhaarMaskingMiddleware(next http.Handler) http.Handler {
 		responseBody := rw.body.Bytes()
 		maskedBody := aadhaarRegex.ReplaceAll(responseBody, []byte("XXXX-XXXX-XXXX-$3"))
 
-		rw.ResponseWriter.Header().Set("Content-Length", strconv.Itoa(len(maskedBody)))
-		if rw.statusCode != http.StatusOK {
-			rw.ResponseWriter.WriteHeader(rw.statusCode)
-		}
-
-		rw.ResponseWriter.Write(maskedBody)
+		// Set headers and status once
+		w.Header().Set("Content-Length", strconv.Itoa(len(maskedBody)))
+		w.WriteHeader(rw.statusCode)
+		w.Write(maskedBody)
 	})
 }

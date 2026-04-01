@@ -12,6 +12,7 @@ type Config struct {
 	RedisURL            string
 	JWT_PrivateKey      string
 	JWT_PublicKey       string
+	CORSAllowedOrigins string
 	UIDAI_API_URL       string
 	DigiLockerClientID  string
 	DigiLockerClientSec string
@@ -25,6 +26,7 @@ func LoadConfig() Config {
 		RedisURL:            os.Getenv("REDIS_URL"),
 		JWT_PrivateKey:      os.Getenv("JWT_PRIVATE_KEY"),
 		JWT_PublicKey:       os.Getenv("JWT_PUBLIC_KEY"),
+		CORSAllowedOrigins: os.Getenv("CORS_ALLOWED_ORIGINS"),
 		UIDAI_API_URL:       os.Getenv("UIDAI_API_URL"),
 		DigiLockerClientID:  os.Getenv("DIGILOCKER_CLIENT_ID"),
 		DigiLockerClientSec: os.Getenv("DIGILOCKER_CLIENT_SECRET"),
@@ -36,6 +38,9 @@ func LoadConfig() Config {
 
 	if cfg.Port == "" {
 		cfg.Port = "8080"
+	}
+	if cfg.CORSAllowedOrigins == "" {
+		cfg.CORSAllowedOrigins = "http://localhost:3000"
 	}
 
 	return cfg
