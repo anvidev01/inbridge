@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# backend
+/backend/inbridge-backend
+/backend/infosetu-backend
+/backend/keys/
+/backend/.env
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
