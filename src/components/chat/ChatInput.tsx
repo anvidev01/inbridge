@@ -219,7 +219,7 @@ export function ChatInput({ input, onInputChange, onSend, isStreaming, language,
                     onChange={(e) => onInputChange(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={isStreaming}
-                    placeholder={isListening ? 'Listening...' : 'Ask InfoSetu...'}
+                    placeholder={isListening ? 'Listening...' : 'Ask InBridge...'}
                     className="flex-1 bg-transparent px-2 py-2.5 outline-none resize-none text-[15px] sm:text-base text-neutral-200 placeholder:text-[#525252] min-h-[44px] max-h-[120px] self-center overflow-y-auto leading-relaxed"
                     rows={1}
                     aria-label="Chat message input"
@@ -305,7 +305,7 @@ export function ChatInput({ input, onInputChange, onSend, isStreaming, language,
 
             {/* Disclaimer */}
             <p className="mt-2 text-[10px] sm:text-[11px] text-[#525252] text-center max-w-2xl px-4 leading-relaxed tracking-wide">
-                InfoSetu provides information based on current government guidelines. Consult official portals.
+                InBridge provides information based on current government guidelines. Consult official portals.
             </p>
         </div>
     );
