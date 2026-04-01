@@ -1,8 +1,11 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
+	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
 )
 
@@ -20,12 +23,16 @@ type Config struct {
 }
 
 func LoadConfig() Config {
+	// Attempt to load .env from current dir or ../infra/
+	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../infra/.env")
+
 	cfg := Config{
-		Port:                os.Getenv("PORT"), // typically 8080
+		Port:                os.Getenv("PORT"),
 		DBURL:               os.Getenv("DB_URL"),
 		RedisURL:            os.Getenv("REDIS_URL"),
-		JWT_PrivateKey:      os.Getenv("JWT_PRIVATE_KEY"),
-		JWT_PublicKey:       os.Getenv("JWT_PUBLIC_KEY"),
+		JWT_PrivateKey:      loadKey(os.Getenv("JWT_PRIVATE_KEY"), "keys/jwt.key"),
+		JWT_PublicKey:       loadKey(os.Getenv("JWT_PUBLIC_KEY"), "keys/jwt.key.pub"),
 		CORSAllowedOrigins: os.Getenv("CORS_ALLOWED_ORIGINS"),
 		UIDAI_API_URL:       os.Getenv("UIDAI_API_URL"),
 		DigiLockerClientID:  os.Getenv("DIGILOCKER_CLIENT_ID"),
@@ -44,6 +51,59 @@ func LoadConfig() Config {
 	}
 
 	return cfg
+}
+
+func loadKey(envVal, filePath string) string {
+	// 1. Try reading from file first (most reliable)
+	content, err := os.ReadFile(filePath)
+	if err == nil {
+		return string(content)
+	}
+
+	// 2. Fallback to env value
+	if envVal != "" {
+		trimmed := strings.Trim(envVal, "\"")
+		trimmed = strings.TrimSpace(trimmed)
+		
+		// If it looks like a PEM block, return it (handle escaped \n)
+		if strings.Contains(trimmed, "-----BEGIN") {
+			return strings.ReplaceAll(trimmed, "\\n", "\n")
+		}
+
+		// Try Base64 decoding
+		decoded, err := base64.StdEncoding.DecodeString(trimmed)
+		if err == nil && strings.Contains(string(decoded), "-----BEGIN") {
+			return string(decoded)
+		}
+	}
+
+	return envVal
+}
+
+func decodeEnvVar(val string) string {
+	if val == "" {
+		return ""
+	}
+
+	// Strip surrounding quotes if present
+	trimmed := strings.Trim(val, "\"")
+	trimmed = strings.TrimSpace(trimmed)
+
+	// Try Base64 decoding
+	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+	if err == nil {
+		str := string(decoded)
+		prefix := str
+		if len(prefix) > 40 {
+			prefix = prefix[:40]
+		}
+		log.Debug().Int("len", len(decoded)).Str("prefix", prefix).Msg("Successfully decoded Base64 env var")
+		return str
+	}
+
+	log.Debug().Err(err).Msg("Base64 decode failed, falling back to literal newline replacement")
+	// Fallback: handle literal \n
+	return strings.ReplaceAll(trimmed, "\\n", "\n")
 }
 
 func validate(c Config) {
