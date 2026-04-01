@@ -1,6 +1,6 @@
-# Consolidated InBridge Database Migration
-# Run this against your PostgreSQL database:
-# psql -h localhost -U inbridge -d inbridge_db -f init.sql
+-- Consolidated InBridge Database Migration
+-- Run this against your PostgreSQL database:
+-- psql -h localhost -U inbridge -d inbridge_db -f init.sql
 
 -- 001_citizens.sql
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

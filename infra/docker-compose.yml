@@ -50,6 +50,8 @@ services:
       - DIGILOCKER_CLIENT_ID=${DIGILOCKER_CLIENT_ID}
       - DIGILOCKER_CLIENT_SECRET=${DIGILOCKER_CLIENT_SECRET}
       - PM_KISAN_API_KEY=${PM_KISAN_API_KEY}
+    volumes:
+      - ../backend/keys:/app/keys
     depends_on:
       postgres:
         condition: service_healthy
