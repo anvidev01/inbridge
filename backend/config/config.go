@@ -70,8 +70,11 @@ func loadKey(envVal, filePath string) string {
 			return strings.ReplaceAll(trimmed, "\\n", "\n")
 		}
 
-		// Try Base64 decoding
-		decoded, err := base64.StdEncoding.DecodeString(trimmed)
+		// Try Base64 decoding (strip whitespace first as StdEncoding is strict)
+		base64Clean := strings.ReplaceAll(trimmed, "\n", "")
+		base64Clean = strings.ReplaceAll(base64Clean, "\r", "")
+		base64Clean = strings.ReplaceAll(base64Clean, " ", "")
+		decoded, err := base64.StdEncoding.DecodeString(base64Clean)
 		if err == nil && strings.Contains(string(decoded), "-----BEGIN") {
 			return string(decoded)
 		}
