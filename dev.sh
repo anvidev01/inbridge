@@ -1,7 +1,9 @@
 #!/bin/bash
 # InBridge Local Development Startup Script
-# Run this instead of Docker when developing locally.
-# Requires: Go, Node.js, Postgres on :5432, Redis on :6379
+# Usage: ./dev.sh
+#
+# Starts: Postgres + Redis (via Docker), Go backend (:8080), Next.js frontend (:3000)
+# Requires: Go 1.23+, Node.js 20+, Docker Desktop running
 
 set -e
 
@@ -9,20 +11,27 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🚀 Starting InBridge local dev environment..."
 
-# --- Check Postgres & Redis ---
-echo "🔍 Checking Postgres on :5432..."
-if ! nc -z localhost 5432 2>/dev/null; then
-  echo "❌ Postgres is NOT running on :5432. Please start Docker Desktop or run postgres locally."
+# --- Start Postgres & Redis via Docker ---
+echo "🐳 Starting Postgres + Redis via Docker Compose..."
+if ! docker info > /dev/null 2>&1; then
+  echo "❌ Docker Desktop is not running. Please start Docker Desktop and try again."
   exit 1
 fi
-echo "✅ Postgres is up"
 
-echo "🔍 Checking Redis on :6379..."
-if ! nc -z localhost 6379 2>/dev/null; then
-  echo "❌ Redis is NOT running on :6379. Please start Docker Desktop."
-  exit 1
-fi
-echo "✅ Redis is up"
+cd "$ROOT/infra" && docker-compose up -d postgres redis && cd "$ROOT"
+
+echo "⏳ Waiting for Postgres and Redis to be ready..."
+for i in {1..15}; do
+  if nc -z localhost 5432 2>/dev/null && nc -z localhost 6379 2>/dev/null; then
+    echo "✅ Postgres and Redis are ready"
+    break
+  fi
+  sleep 1
+  if [ $i -eq 15 ]; then
+    echo "❌ Timed out waiting for DB/Redis. Check Docker logs."
+    exit 1
+  fi
+done
 
 # --- Kill any existing processes on used ports ---
 kill_port() {
@@ -48,7 +57,7 @@ export REDIS_URL="redis://:redis_secret@localhost:6379/0"
 export PORT=8080
 export CORS_ALLOWED_ORIGINS="http://localhost:3000"
 
-go run ./... &
+go run main.go > /tmp/inbridge-backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   Backend PID: $BACKEND_PID"
 
