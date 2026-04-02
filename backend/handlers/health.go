@@ -27,7 +27,6 @@ func HealthCheck(db *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
 		statusCode := http.StatusOK
 		if dbStatus == "down" || redisStatus == "down" {
 			overallStatus = "degraded"
-			statusCode = http.StatusServiceUnavailable
 		}
 
 		response := map[string]interface{}{
