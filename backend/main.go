@@ -59,6 +59,16 @@ func main() {
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.CorsMiddleware(cfg.CORSAllowedOrigins))
 
+	// ── Generic Healthchecks (Railway root) ──
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	r.Get("/health", func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// ── Health (public) ──
 		r.Get("/health", handlers.HealthCheck(dbPool, rdb))
@@ -95,7 +105,7 @@ func main() {
 
 	// ── Server ──
 	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
+		Addr:         "0.0.0.0:" + cfg.Port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,

@@ -18,7 +18,7 @@ func InitPostgres(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
 	}
 
 	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("error pinging db: %w", err)
+		fmt.Printf("Warning: failed to ping postgres during startup: %v\n", err)
 	}
 
 	return pool, nil
