@@ -62,12 +62,35 @@ func loadKey(envVal, filePath string) string {
 
 	// 2. Fallback to env value
 	if envVal != "" {
-		trimmed := strings.Trim(envVal, "\"")
-		trimmed = strings.TrimSpace(trimmed)
+		// Strip all possible surrounding quotes and whitespace
+		trimmed := strings.Trim(envVal, "\"'` \t\r\n")
 		
-		// If it looks like a PEM block, return it (handle escaped \n)
+		// If it looks like a PEM block, handle platform-specific formatting issues
 		if strings.Contains(trimmed, "-----BEGIN") {
-			return strings.ReplaceAll(trimmed, "\\n", "\n")
+			// Fix escaped newlines (e.g., from Vercel/Render env vars passed as single line)
+			trimmed = strings.ReplaceAll(trimmed, "\\n", "\n")
+			trimmed = strings.ReplaceAll(trimmed, "\\r", "")
+
+			// Auto-fix PEMs that were completely space-collapsed (no actual newlines)
+			if !strings.Contains(trimmed, "\n") && strings.Contains(trimmed, " -----END") {
+				// Re-insert newlines around the headers
+				trimmed = strings.Replace(trimmed, "-----BEGIN RSA PRIVATE KEY----- ", "-----BEGIN RSA PRIVATE KEY-----\n", 1)
+				trimmed = strings.Replace(trimmed, "-----BEGIN PRIVATE KEY----- ", "-----BEGIN PRIVATE KEY-----\n", 1)
+				trimmed = strings.Replace(trimmed, " -----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----", 1)
+				trimmed = strings.Replace(trimmed, " -----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----", 1)
+
+				// Strip purely internal spaces from the base64 payload body
+				// (Assuming standard chunking, though jwt-go pem.Decode handles continuous base64 mostly fine
+				// once the BEGIN/END lines properly have newlines).
+				// We do a regex-free approach for safety:
+				lines := strings.Split(trimmed, "\n")
+				if len(lines) == 3 {
+					body := strings.ReplaceAll(lines[1], " ", "")
+					trimmed = lines[0] + "\n" + body + "\n" + lines[2]
+				}
+			}
+
+			return trimmed
 		}
 
 		// Try Base64 decoding (strip whitespace first as StdEncoding is strict)
