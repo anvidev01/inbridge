@@ -29,8 +29,22 @@ func main() {
 	cfg := config.LoadConfig()
 
 	// ── Parse RSA keys from PEM-encoded env vars ──
-	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(cfg.JWT_PrivateKey))
+	privKeyStr := cfg.JWT_PrivateKey
+	previewLen := 40
+	if len(privKeyStr) < previewLen {
+		previewLen = len(privKeyStr)
+	}
+	
+	log.Debug().
+		Int("key_len", len(privKeyStr)).
+		Str("prefix", privKeyStr[:previewLen]).
+		Bool("has_literal_escape", strings.Contains(privKeyStr, "\\n")).
+		Bool("has_real_newline", strings.Contains(privKeyStr, "\n")).
+		Msg("About to parse JWT_PRIVATE_KEY from environment config")
+
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privKeyStr))
 	if err != nil {
+		log.Error().Str("normalized_key_dump", privKeyStr).Msg("Failed to parse JWT_PRIVATE_KEY. Full dump of normalized key:")
 		log.Fatal().Err(err).Msg("Failed to parse JWT_PRIVATE_KEY (must be PEM-encoded RSA private key)")
 	}
 	publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.JWT_PublicKey))

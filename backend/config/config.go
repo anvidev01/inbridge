@@ -62,45 +62,57 @@ func loadKey(envVal, filePath string) string {
 
 	// 2. Fallback to env value
 	if envVal != "" {
-		// Strip all possible surrounding quotes and whitespace
-		trimmed := strings.Trim(envVal, "\"'` \t\r\n")
-		
-		// If it looks like a PEM block, handle platform-specific formatting issues
-		if strings.Contains(trimmed, "-----BEGIN") {
-			// Fix escaped newlines (e.g., from Vercel/Render env vars passed as single line)
-			trimmed = strings.ReplaceAll(trimmed, "\\n", "\n")
-			trimmed = strings.ReplaceAll(trimmed, "\\r", "")
+		// Trim quotes safely
+		val := strings.Trim(envVal, "\"'` \t\r\n")
 
-			// Auto-fix PEMs that were completely space-collapsed (no actual newlines)
-			if !strings.Contains(trimmed, "\n") && strings.Contains(trimmed, " -----END") {
-				// Re-insert newlines around the headers
-				trimmed = strings.Replace(trimmed, "-----BEGIN RSA PRIVATE KEY----- ", "-----BEGIN RSA PRIVATE KEY-----\n", 1)
-				trimmed = strings.Replace(trimmed, "-----BEGIN PRIVATE KEY----- ", "-----BEGIN PRIVATE KEY-----\n", 1)
-				trimmed = strings.Replace(trimmed, " -----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----", 1)
-				trimmed = strings.Replace(trimmed, " -----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----", 1)
+		// Flow 1: Base64-encoded PEM
+		// If it's missing the BEGIN header, maybe it's just raw Base64.
+		if !strings.Contains(val, "-----BEGIN") {
+			base64Clean := strings.ReplaceAll(val, "\n", "")
+			base64Clean = strings.ReplaceAll(base64Clean, "\r", "")
+			base64Clean = strings.ReplaceAll(base64Clean, " ", "")
+			decoded, err := base64.StdEncoding.DecodeString(base64Clean)
+			if err == nil && strings.Contains(string(decoded), "-----BEGIN") {
+				val = string(decoded)
+			}
+		}
 
-				// Strip purely internal spaces from the base64 payload body
-				// (Assuming standard chunking, though jwt-go pem.Decode handles continuous base64 mostly fine
-				// once the BEGIN/END lines properly have newlines).
-				// We do a regex-free approach for safety:
-				lines := strings.Split(trimmed, "\n")
+		// Flow 2 & 3: Literal \n escapes or pre-formatted multiline
+		if strings.Contains(val, "-----BEGIN") {
+			// Convert litreal \n or \r to actual newlines
+			val = strings.ReplaceAll(val, "\\n", "\n")
+			val = strings.ReplaceAll(val, "\\r", "")
+
+			// Failsafe for extreme space-collapsed PEMs
+			if !strings.Contains(val, "\n") && strings.Contains(val, " -----END") {
+				val = strings.Replace(val, "-----BEGIN RSA PRIVATE KEY----- ", "-----BEGIN RSA PRIVATE KEY-----\n", 1)
+				val = strings.Replace(val, "-----BEGIN PRIVATE KEY----- ", "-----BEGIN PRIVATE KEY-----\n", 1)
+				val = strings.Replace(val, "-----BEGIN PUBLIC KEY----- ", "-----BEGIN PUBLIC KEY-----\n", 1)
+				val = strings.Replace(val, " -----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----", 1)
+				val = strings.Replace(val, " -----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----", 1)
+				val = strings.Replace(val, " -----END PUBLIC KEY-----", "\n-----END PUBLIC KEY-----", 1)
+
+				lines := strings.Split(val, "\n")
 				if len(lines) == 3 {
-					body := strings.ReplaceAll(lines[1], " ", "")
-					trimmed = lines[0] + "\n" + body + "\n" + lines[2]
+					body := strings.ReplaceAll(lines[1], " ", "") // remove spaces from the base64 part
+					val = lines[0] + "\n" + body + "\n" + lines[2]
 				}
 			}
 
-			return trimmed
-		}
+			// Final trim
+			val = strings.TrimSpace(val)
+			
+			// Header Validation Check
+			if !strings.HasPrefix(val, "-----BEGIN RSA PRIVATE KEY-----") && 
+			   !strings.HasPrefix(val, "-----BEGIN PRIVATE KEY-----") &&
+			   !strings.HasPrefix(val, "-----BEGIN PUBLIC KEY-----") {
+				log.Warn().Str("prefix", val).Msg("Key contains 'BEGIN' but its prefix does not exactly match standard PKCS1/PKCS8 boundaries")
+			}
 
-		// Try Base64 decoding (strip whitespace first as StdEncoding is strict)
-		base64Clean := strings.ReplaceAll(trimmed, "\n", "")
-		base64Clean = strings.ReplaceAll(base64Clean, "\r", "")
-		base64Clean = strings.ReplaceAll(base64Clean, " ", "")
-		decoded, err := base64.StdEncoding.DecodeString(base64Clean)
-		if err == nil && strings.Contains(string(decoded), "-----BEGIN") {
-			return string(decoded)
+			return val
 		}
+		
+		return val
 	}
 
 	return envVal
