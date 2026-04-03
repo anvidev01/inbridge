@@ -29,7 +29,7 @@ func LoadConfig() Config {
 
 	cfg := Config{
 		Port:                os.Getenv("PORT"),
-		DBURL:               os.Getenv("DB_URL"),
+		DBURL:               os.Getenv("DATABASE_URL"),
 		RedisURL:            os.Getenv("REDIS_URL"),
 		JWT_PrivateKey:      loadKey(os.Getenv("JWT_PRIVATE_KEY"), "keys/jwt.key"),
 		JWT_PublicKey:       loadKey(os.Getenv("JWT_PUBLIC_KEY"), "keys/jwt.key.pub"),
@@ -146,7 +146,7 @@ func decodeEnvVar(val string) string {
 
 func validate(c Config) {
 	required := map[string]string{
-		"DB_URL":                   c.DBURL,
+		"DATABASE_URL":             c.DBURL,
 		"REDIS_URL":                c.RedisURL,
 		"JWT_PRIVATE_KEY":          c.JWT_PrivateKey,
 		"JWT_PUBLIC_KEY":           c.JWT_PublicKey,
