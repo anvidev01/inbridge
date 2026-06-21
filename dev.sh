@@ -55,7 +55,7 @@ cd "$ROOT/backend"
 export DB_URL="postgres://inbridge:inbridge_secret@localhost:5432/inbridge_db?sslmode=disable"
 export REDIS_URL="redis://:redis_secret@localhost:6379/0"
 export PORT=8080
-export CORS_ALLOWED_ORIGINS="http://localhost:3000"
+export CORS_ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000,http://192.168.29.250:3000"
 
 go run main.go > /tmp/inbridge-backend.log 2>&1 &
 BACKEND_PID=$!
@@ -80,6 +80,13 @@ echo ""
 echo "🎨 Starting Next.js frontend on :3000..."
 cd "$ROOT"
 export NEXT_PUBLIC_API_URL="http://localhost:8080"
+
+# Source NVM if it exists
+export NVM_DIR="$HOME/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  \. "$NVM_DIR/nvm.sh"
+fi
+
 npm run dev -- --port 3000 &
 FRONTEND_PID=$!
 echo "   Frontend PID: $FRONTEND_PID"
