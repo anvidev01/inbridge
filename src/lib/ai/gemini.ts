@@ -7,7 +7,7 @@ interface Message {
     content: string;
 }
 
-export async function createGeminiStream(messages: Message[], modelOverride?: string) {
+export async function createGeminiStream(messages: Message[], modelOverride?: string, systemPromptOverride?: string) {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
     if (!apiKey) {
         throw new Error('Google Gemini API Key is missing. Please set GOOGLE_GEMINI_API_KEY in your environment.');
@@ -17,11 +17,12 @@ export async function createGeminiStream(messages: Message[], modelOverride?: st
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const maxTokens = parseInt(process.env.CHAT_MAX_TOKENS || '2048', 10);
+    const sysPrompt = systemPromptOverride || systemPrompt;
 
     // Gemini uses systemInstruction
     const model = genAI.getGenerativeModel({
         model: modelName,
-        systemInstruction: systemPrompt
+        systemInstruction: sysPrompt
     });
 
     // Convert generic messages to Gemini format
@@ -46,3 +47,4 @@ export async function createGeminiStream(messages: Message[], modelOverride?: st
         throw error;
     }
 }
+

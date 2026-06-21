@@ -35,8 +35,8 @@ export function validateRequest(text: string, ip: string = 'unknown'): Validatio
 
     // 3. PII Detection
 
-    // Aadhaar: 12 digits, often spaced 4-4-4
-    const aadhaarRegex = /\b\d{4}\s?\d{4}\s?\d{4}\b/;
+    // Aadhaar: 12 digits, often spaced 4-4-4 or separated by hyphens
+    const aadhaarRegex = /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/;
     if (aadhaarRegex.test(sanitizedText)) {
         return {
             valid: false,
@@ -45,7 +45,7 @@ export function validateRequest(text: string, ip: string = 'unknown'): Validatio
     }
 
     // PAN Card: 5 letters, 4 digits, 1 letter (ABCDE1234F)
-    const panRegex = /[A-Z]{5}[0-9]{4}[A-Z]{1}/i;
+    const panRegex = /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/i;
     if (panRegex.test(sanitizedText)) {
         return {
             valid: false,
@@ -67,3 +67,40 @@ export function validateRequest(text: string, ip: string = 'unknown'): Validatio
         sanitizedText: sanitizedText
     };
 }
+
+export function checkGuardrails(text: string): { safe: boolean; error?: string } {
+    // 1. Sanitization (Remove HTML/Scripts)
+    const sanitizedText = text.replace(/<[^>]*>?/gm, '');
+
+    // 2. Aadhaar Check
+    const aadhaarRegex = /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/;
+    if (aadhaarRegex.test(sanitizedText)) {
+        return { safe: false, error: "Query contains Aadhaar-like sequence. Do not share raw Aadhaar." };
+    }
+
+    // 3. PAN Check
+    const panRegex = /\b[A-Z]{5}\d{4}[A-Z]{1}\b/i;
+    if (panRegex.test(sanitizedText)) {
+        return { safe: false, error: "Query contains PAN pattern. Please avoid submitting raw Personal Identifiable Information." };
+    }
+
+    // 4. Prompt Injection Keywords
+    const injectionKeywords = [
+        "ignore previous instructions",
+        "system prompt",
+        "you are a developer",
+        "forget all",
+        "bypass",
+        "jailbreak"
+    ];
+    
+    const lowerText = sanitizedText.toLowerCase();
+    for (const kw of injectionKeywords) {
+        if (lowerText.includes(kw)) {
+            return { safe: false, error: "Potentially unsafe instructions detected." };
+        }
+    }
+
+    return { safe: true };
+}
+

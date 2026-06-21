@@ -6,7 +6,7 @@ interface Message {
     content: string;
 }
 
-export function createAnthropicStream(messages: Message[], modelOverride?: string) {
+export function createAnthropicStream(messages: Message[], modelOverride?: string, systemPromptOverride?: string) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
         throw new Error('Anthropic API Key is missing. Please set ANTHROPIC_API_KEY in your environment.');
@@ -18,6 +18,7 @@ export function createAnthropicStream(messages: Message[], modelOverride?: strin
 
     const modelName = modelOverride || process.env.ANTHROPIC_MODEL || 'claude-opus-4-5';
     const maxTokens = parseInt(process.env.CHAT_MAX_TOKENS || '2048', 10);
+    const sysPrompt = systemPromptOverride || systemPrompt;
 
     // Filter out system messages as Anthropic uses a top-level system parameter
     const conversation = messages
@@ -31,7 +32,7 @@ export function createAnthropicStream(messages: Message[], modelOverride?: strin
         const stream = anthropic.messages.stream({
             model: modelName,
             max_tokens: maxTokens,
-            system: systemPrompt,
+            system: sysPrompt,
             messages: conversation,
         });
 
@@ -41,3 +42,4 @@ export function createAnthropicStream(messages: Message[], modelOverride?: strin
         throw error;
     }
 }
+

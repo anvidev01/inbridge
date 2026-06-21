@@ -98,12 +98,16 @@ export class RAGEngine {
         }
     }
 
-    public async query(userMessage: string, language: Language = 'en'): Promise<RAGResponse> {
+    public async retrieveContext(userMessage: string): Promise<{
+        context: string;
+        source: "vector_store" | "tavily_search" | "llm_direct";
+        citations: any[];
+    }> {
         // Attempt to load VS, but don't block
         await this.initializeVectorStore();
 
         let context = "";
-        let source: "vector_store" | "tavily_search" = "vector_store";
+        let source: "vector_store" | "tavily_search" | "llm_direct" = "vector_store";
         let citations: any[] = [];
 
         // 1. Try Vector Search first
@@ -113,10 +117,16 @@ export class RAGEngine {
                 const results = await this.vectorStore.similaritySearchWithScore(userMessage, 3);
 
                 if (results.length > 0) {
-                    // We have local context
-                    context = results.map(([doc, _]: [any, any]) => doc.pageContent).join("\n\n");
-                    citations = results.map(([doc, _]: [any, any]) => doc.metadata);
-                    source = "vector_store";
+                    const topScore = results[0][1];
+                    const similarity = 1 - topScore; // standard distance-to-similarity mapping
+                    if (similarity >= this.SIMILARITY_THRESHOLD) {
+                        const filteredResults = results.filter(([_, score]) => (1 - score) >= this.SIMILARITY_THRESHOLD);
+                        context = filteredResults.map(([doc, _]: [any, any]) => doc.pageContent).join("\n\n");
+                        citations = filteredResults.map(([doc, _]: [any, any]) => doc.metadata);
+                        source = "vector_store";
+                    } else {
+                        console.log(`⚠️ Top result similarity (${similarity.toFixed(3)}) is below threshold (${this.SIMILARITY_THRESHOLD}). Treating as a miss.`);
+                    }
                 }
             } catch (err) {
                 console.error("Vector search error:", err);
@@ -146,6 +156,16 @@ export class RAGEngine {
                 console.error("Tavily search error:", err);
             }
         }
+
+        if (!context) {
+            source = "llm_direct";
+        }
+
+        return { context, source, citations };
+    }
+
+    public async query(userMessage: string, language: Language = 'en'): Promise<RAGResponse> {
+        const { context, source, citations } = await this.retrieveContext(userMessage);
 
         // 3. Generate Response using Ollama with Language Dynamic Prompt
         const languageInstruction = PROMPTS[language] || PROMPTS['en'];
@@ -188,3 +208,4 @@ ${userMessage}
         }
     }
 }
+
