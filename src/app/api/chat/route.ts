@@ -10,6 +10,20 @@ export const maxDuration = 60;
 
 const ragEngine = new RAGEngine();
 
+function getMessageText(message: any): string {
+    if (!message) return '';
+    if (typeof message.content === 'string' && message.content) {
+        return message.content;
+    }
+    if (Array.isArray(message.parts)) {
+        return message.parts
+            .filter((p: any) => p.type === 'text')
+            .map((p: any) => p.text)
+            .join('');
+    }
+    return '';
+}
+
 async function* normalizeStream(stream: any): AsyncGenerator<string, void, unknown> {
     if (stream && typeof stream.on === 'function') {
         // Anthropic MessageStream (Event Emitter style / Symbol.asyncIterator)
@@ -59,7 +73,8 @@ export async function POST(req: Request) {
         const messages: UIMessage[] = body.messages ?? [];
         const userMessages = messages.filter(m => m.role === 'user');
         const lastUserMessage = userMessages[userMessages.length - 1];
-        const queryText = lastUserMessage?.content || '';
+        const queryText = getMessageText(lastUserMessage);
+
 
         // 3. Guardrails & PII Check (checked next, before LLM or search)
         const guardrailRes = checkGuardrails(queryText);
@@ -95,7 +110,7 @@ ${context}
         // 6. Map messages to format expected by routeChatStream
         const routerMessages = messages.map(msg => ({
             role: msg.role as 'user' | 'assistant' | 'system',
-            content: msg.content
+            content: getMessageText(msg)
         }));
 
         // Execute failover stream selection

@@ -120,7 +120,7 @@ export class RAGEngine {
                     const topScore = results[0][1];
                     const similarity = 1 - topScore; // standard distance-to-similarity mapping
                     if (similarity >= this.SIMILARITY_THRESHOLD) {
-                        const filteredResults = results.filter(([_, score]) => (1 - score) >= this.SIMILARITY_THRESHOLD);
+                        const filteredResults = results.filter(([_, score]: [any, number]) => (1 - score) >= this.SIMILARITY_THRESHOLD);
                         context = filteredResults.map(([doc, _]: [any, any]) => doc.pageContent).join("\n\n");
                         citations = filteredResults.map(([doc, _]: [any, any]) => doc.metadata);
                         source = "vector_store";

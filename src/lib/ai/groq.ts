@@ -27,7 +27,6 @@ export async function createGroqStream(messages: Message[], modelOverride?: stri
     try {
         const result = await streamText({
             model: groq(modelName),
-            maxTokens: maxTokens,
             system: sysPrompt,
             messages: conversation,
         });
