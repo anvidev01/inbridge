@@ -3,11 +3,15 @@ import { ChatOllama } from "@langchain/ollama";
 import { ChatGroq } from "@langchain/groq";
 import { tavily } from "@tavily/core";
 import path from "path";
+import { LRUCache, queryCacheKey } from "./cache/lru";
+import { log } from "./observability/logger";
+import type { RAGSource, TelemetryBatch } from "./observability/telemetry";
 
 // Define interfaces for our RAG response
 export interface RAGResponse {
     answer: string;
-    source: "vector_store" | "tavily_search" | "llm_direct";
+    // Widened to RAGSource: a cached retrieval reports source "cache".
+    source: RAGSource;
     citations: Array<{
         title: string;
         url?: string;
@@ -25,6 +29,36 @@ const PROMPTS: Record<Language, string> = {
     te: "మీరు ప్రభుత్వ సహాయకులు. దయచేసి సమాధానం తెలుగులో మాత్రమే ఇవ్వండి. అధికారిక మరియు సహాయక ధోరణిని కొనసాగించండి.",
     hinglish: "You are an official government assistant. Respond in Hinglish. Use Devanagari script for conversational Hindi text, but keep technical terms (like 'Aadhaar', 'Scheme', 'Apply') strictly in English (Latin script). Example: 'Aadhaar Card ke liye apply karein'."
 };
+
+/** What retrieveContext returns, and what the cache stores. */
+export interface RetrievedContext {
+    context: string;
+    source: RAGSource;
+    citations: any[];
+}
+
+/**
+ * Retrieval cache, shared across RAGEngine instances in the same process.
+ *
+ * Module scope rather than instance scope: the chat route constructs a
+ * RAGEngine at module load, but a per-instance cache would still be lost if
+ * anything ever constructs the engine per request. Keeping it here makes the
+ * lifetime explicit and lets the process warm the cache across requests.
+ */
+const retrievalCache = new LRUCache<RetrievedContext>(
+    parseInt(process.env.RAG_CACHE_MAX_ENTRIES || "500", 10),
+    parseInt(process.env.RAG_CACHE_TTL_MS || String(15 * 60 * 1000), 10)
+);
+
+/** Exposed so tests and the /readyz probe can inspect cache effectiveness. */
+export function ragCacheStats() {
+    return retrievalCache.stats();
+}
+
+/** Exposed for tests. */
+export function clearRagCache() {
+    retrievalCache.clear();
+}
 
 export class RAGEngine {
     private vectorStorePath: string;
@@ -99,16 +133,60 @@ export class RAGEngine {
         }
     }
 
-    public async retrieveContext(userMessage: string): Promise<{
-        context: string;
-        source: "vector_store" | "tavily_search" | "llm_direct";
-        citations: any[];
-    }> {
+    /**
+     * Returns retrieval context for a query, serving repeats from the LRU cache.
+     *
+     * Emits exactly one rag_cache event per call so that
+     * inbridge_rag_cache_hits_total / (hits + misses) is a true hit rate.
+     */
+    public async retrieveContext(
+        userMessage: string,
+        telemetry?: TelemetryBatch
+    ): Promise<RetrievedContext> {
+        const started = Date.now();
+        const key = queryCacheKey(userMessage);
+
+        const cached = retrievalCache.get(key);
+        if (cached) {
+            const elapsed = Date.now() - started;
+            telemetry?.ragCache("hit", "cache", elapsed);
+            log.info("RAG cache hit", {
+                duration_ms: elapsed,
+                cached_source: cached.source,
+                citations: cached.citations.length,
+            });
+            return cached;
+        }
+
+        const result = await this.retrieveUncached(userMessage);
+        const elapsed = Date.now() - started;
+
+        telemetry?.ragCache("miss", result.source, elapsed);
+        log.info("RAG retrieval completed", {
+            duration_ms: elapsed,
+            source: result.source,
+            citations: result.citations.length,
+            context_chars: result.context.length,
+        });
+
+        // Only cache a real retrieval. An empty context means the vector store
+        // missed *and* Tavily failed or was unconfigured; caching that would pin
+        // a transient outage in front of every repeat of the query for the whole
+        // TTL, long after the dependency recovered.
+        if (result.context) {
+            retrievalCache.set(key, result);
+        }
+
+        return result;
+    }
+
+    /** Performs the actual retrieval: vector store first, Tavily as fallback. */
+    private async retrieveUncached(userMessage: string): Promise<RetrievedContext> {
         // Attempt to load VS, but don't block
         await this.initializeVectorStore();
 
         let context = "";
-        let source: "vector_store" | "tavily_search" | "llm_direct" = "vector_store";
+        let source: RAGSource = "vector_store";
         let citations: any[] = [];
 
         // 1. Try Vector Search first

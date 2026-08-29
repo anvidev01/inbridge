@@ -3,6 +3,8 @@ import { checkGuardrails } from '@/lib/guardrails';
 import { RAGEngine } from '@/lib/rag-engine';
 import { routeChatStream } from '@/lib/ai/router';
 import { systemPrompt } from '@/lib/ai/system-prompt';
+import { log } from '@/lib/observability/logger';
+import { TelemetryBatch, classifyError } from '@/lib/observability/telemetry';
 import { UIMessage } from 'ai';
 
 export const runtime = 'nodejs';
@@ -49,11 +51,15 @@ async function* normalizeStream(stream: any): AsyncGenerator<string, void, unkno
 }
 
 export async function POST(req: Request) {
+    const requestStarted = Date.now();
+    const telemetry = new TelemetryBatch();
+
     try {
         // 1. Rate Limiting (checked first)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || '127.0.0.1';
         const rateLimitRes = await checkRateLimit(ip);
         if (!rateLimitRes.success) {
+            log.warn('Chat request rate limited', { limit: rateLimitRes.limit });
             return new Response(
                 JSON.stringify({ error: "Too many requests. Please try again in a minute. (कृपया थोड़ी देर बाद पुनः प्रयास करें।)" }),
                 {
@@ -79,6 +85,9 @@ export async function POST(req: Request) {
         // 3. Guardrails & PII Check (checked next, before LLM or search)
         const guardrailRes = checkGuardrails(queryText);
         if (!guardrailRes.safe) {
+            // The query itself is deliberately not logged: guardrails trip on
+            // PII, so the offending text is exactly what must not reach logs.
+            log.warn('Chat request blocked by guardrails', { query_chars: queryText.length });
             return new Response(
                 JSON.stringify({ error: guardrailRes.error }),
                 { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -86,7 +95,7 @@ export async function POST(req: Request) {
         }
 
         // 4. Retrieve Context (FAISS vector store search with Tavily fallback)
-        const { context, citations } = await ragEngine.retrieveContext(queryText);
+        const { context, citations } = await ragEngine.retrieveContext(queryText, telemetry);
 
         // 5. Build Dynamic System Prompt with Language Instruction and Context
         const languageInstruction = body.languageInstruction
@@ -114,7 +123,12 @@ ${context}
         }));
 
         // Execute failover stream selection
-        const rawStream = await routeChatStream(routerMessages, undefined, fullSystemPrompt);
+        const { stream: rawStream, provider, failovers } = await routeChatStream(
+            routerMessages,
+            undefined,
+            fullSystemPrompt,
+            telemetry
+        );
 
         // 7. Construct Response Stream using Vercel AI SDK Data Stream protocol
         const encoder = new TextEncoder();
@@ -134,11 +148,35 @@ ${context}
                             controller.enqueue(encoder.encode(`0:${JSON.stringify(chunk)}\n`));
                         }
                     }
+
+                    log.info('Chat request completed', {
+                        provider,
+                        failovers,
+                        duration_ms: Date.now() - requestStarted,
+                    });
                 } catch (error: any) {
-                    console.error("Stream pipe error:", error);
+                    // A provider can accept the connection and then fail mid-stream
+                    // (auth rejected lazily, upstream 5xx, connection reset). The
+                    // router already counted this attempt as a success when the
+                    // stream opened, so record the mid-stream failure separately
+                    // rather than leaving it invisible.
+                    telemetry.llmError(provider, Date.now() - requestStarted, classifyError(error));
+                    log.error('Chat stream failed mid-response', {
+                        provider,
+                        failovers,
+                        duration_ms: Date.now() - requestStarted,
+                        error,
+                    });
                     controller.enqueue(encoder.encode(`3:${JSON.stringify(error.message || 'Stream error')}\n`));
                 } finally {
+                    // Close first, flush second: the reader already has the full
+                    // answer, so the telemetry POST costs the user nothing. The
+                    // await keeps the serverless invocation alive until the batch
+                    // ships -- a detached promise is not guaranteed to run once
+                    // the instance freezes. (On Vercel, waitUntil from
+                    // @vercel/functions would be the cleaner primitive.)
                     controller.close();
+                    await telemetry.flush();
                 }
             }
         });
@@ -153,7 +191,14 @@ ${context}
         });
 
     } catch (error: any) {
-        console.error('Chat API Error:', error);
+        log.error('Chat request failed', {
+            duration_ms: Date.now() - requestStarted,
+            error,
+        });
+        // The request failed before streaming began, so nothing else will flush
+        // the events collected so far (RAG retrieval, failed provider attempts).
+        await telemetry.flush();
+
         return new Response(
             JSON.stringify({ error: error.message || 'An error occurred.' }),
             { status: 500, headers: { 'Content-Type': 'application/json' } }

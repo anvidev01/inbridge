@@ -10,7 +10,9 @@
     "scrape": "cd scripts/scraper && python scraper.py",
     "db:serve": "docker run -p 8000:8000 chromadb/chroma",
     "db:generate": "node scripts/generate-vector-store-faiss.js",
-    "setup:complete": "npm run db:serve & sleep 10 && npm run scrape"
+    "setup:complete": "npm run db:serve & sleep 10 && npm run scrape",
+    "test": "tsx --test \"src/lib/__tests__/*.test.ts\"",
+    "test:go": "cd backend && go test ./..."
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.30",
@@ -56,6 +58,7 @@
     "eslint-config-next": "^16.1.6",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }
