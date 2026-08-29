@@ -27,7 +27,7 @@ func main() {
 	sqlFile := "db/init.sql"
 	content, err := os.ReadFile(sqlFile)
 	if err != nil {
-		fmt.Printf("Error reading %s: %v\n", sqlFile)
+		fmt.Printf("Error reading %s: %v\n", sqlFile, err)
 		os.Exit(1)
 	}
 
