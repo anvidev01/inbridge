@@ -1,5 +1,14 @@
 # InBridge Load Testing
 
+Two scripts:
+
+| Script | Target | Needs |
+|---|---|---|
+| `k6/chat_load.js` | `POST /api/chat` (Next.js) — rate limit → guardrails → RAG → LLM chain | Next.js server |
+| `k6/api_load.js` | Go backend CRUD (`/api/v1/*`) | Go backend + Postgres + Redis |
+
+Measured numbers live in **[RESULTS.md](RESULTS.md)**.
+
 ## Prerequisites
 
 Install k6: https://grafana.com/docs/k6/latest/set-up/install-k6/
@@ -62,47 +71,62 @@ auth_login_duration:   custom metric — login endpoint only
 service_apply_duration: custom metric — service apply endpoint only
 ```
 
-## Before / After Comparison
+## Reproducing the RAG cache before/after
 
-Run a baseline before the DB index migration:
+`RAG_CACHE_TTL_MS=0` expires every entry immediately, which is the control:
+the same code path, with no reuse.
+
 ```bash
-k6 run loadtest/k6/chat_load.js --out json=loadtest/results/before_indexes.json
+# 1. baseline — cache disabled
+CHAT_RATE_LIMIT_PER_MIN=1000000 RAG_CACHE_TTL_MS=0 npm start &
+# warm the embedding model and FAISS index first, or the first request's
+# ~13s model load lands in the histogram
+curl -s -o /dev/null -X POST localhost:3000/api/chat -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","parts":[{"type":"text","text":"warmup"}]}]}'
+
+BASE_URL=http://localhost:3000 RUN_LABEL=before VUS=20 DURATION=45s ACCEPT_5XX=true \
+  k6 run loadtest/k6/chat_load.js
+
+# 2. cache enabled — restart, warm again, rerun with RUN_LABEL=after
 ```
 
-Apply the migration (`007_performance_indexes.sql`), then:
-```bash
-k6 run loadtest/k6/chat_load.js --out json=loadtest/results/after_indexes.json
-```
+`ACCEPT_5XX=true` is required when no LLM provider keys are set: the chain runs
+and then correctly reports that nothing is configured. Drop it for end-to-end
+runs with real keys.
 
-Compare p95:
-```bash
-jq '.metrics.http_req_duration.values["p(95)"]' \
-  loadtest/results/before_indexes.json \
-  loadtest/results/after_indexes.json
-```
+Raw k6 summaries land in `loadtest/results/` (gitignored); the numbers worth
+keeping go in [RESULTS.md](RESULTS.md).
 
-## Optimisations Applied
+## Optimisations
 
-The following optimisations were identified and patched after profiling:
+### Measured (see [RESULTS.md](RESULTS.md))
 
-### 1. DB Index Migration (`007_performance_indexes.sql`)
-- `idx_grievances_citizen_id` — prevents seq-scan on citizen grievance lookups
-- `idx_grievances_citizen_status` — enables efficient status-filtered queries
-- `idx_audit_log_citizen_time` — compliance time-range queries now use index-only scans
-- `idx_audit_log_action` — admin audit filtering by action type
-- `idx_applications_service_status` — dashboard analytics on application pipeline
+1. **FAISS distance→similarity conversion** (`src/lib/rag-engine.ts`)
+   `1 - score` was applied to a *squared* L2 distance, so no query ever cleared
+   the similarity threshold and the vector store returned empty context 100% of
+   the time. Corrected to `1 - score/2` with the threshold recalibrated to 0.5
+   against measured scores. Retrieval went from 0 to 721 chars of context on a
+   representative query.
 
-### 2. Prometheus `MetricsMiddleware` placed first in chi middleware chain
-- Ensures accurate request counting even for panicked requests caught by Recoverer.
+2. **RAG response cache** (`src/lib/cache/lru.ts`)
+   Bounded LRU with TTL in front of retrieval. At a 28% measured hit rate:
+   p95 −26% on repeated queries, −20% on unique ones, throughput +29.6%.
 
-### 3. Circuit Breaker (`circuit/breaker.go`)
-- Prevents cascading failures when the Python AI service is slow/down.
-- Under load, open CB prevents VU threads from blocking on 30s timeouts.
-- Dramatically reduces p99 tail latency during AI service degradation.
+### Committed but not yet measured
 
-### 4. Structured JSON Logging
-- Replaced `ConsoleWriter` (synchronous pretty-printer) with `zerolog.New(os.Stdout)`.
-- Under 100 VU spike, the previous console formatter caused measurable lock contention.
+3. **DB index migration** (`007_performance_indexes.sql`)
+   Indexes on grievance/audit/application lookups. Measuring these needs
+   Postgres under `api_load.js`; no before/after has been recorded yet.
+
+4. **Prometheus `MetricsMiddleware` first in the chi chain**
+   So requests that panic into `Recoverer` are still counted. This is a
+   correctness property of the metrics, not a latency optimisation.
+
+5. **Circuit breakers on the LLM chain** (`backend/circuit/providers.go`)
+   A struggling provider is skipped rather than retried, which should cut tail
+   latency during a provider outage. Verified functionally by tests; the
+   latency effect has not been load-tested, as it needs a provider to fail
+   under load.
 
 ## Notes
 

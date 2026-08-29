@@ -30,6 +30,25 @@ const PROMPTS: Record<Language, string> = {
     hinglish: "You are an official government assistant. Respond in Hinglish. Use Devanagari script for conversational Hindi text, but keep technical terms (like 'Aadhaar', 'Scheme', 'Apply') strictly in English (Latin script). Example: 'Aadhaar Card ke liye apply karein'."
 };
 
+/**
+ * Converts a FAISS IndexFlatL2 score into a cosine similarity in [-1, 1].
+ *
+ * The embedding model (Xenova/all-MiniLM-L6-v2) returns unit vectors -- verified
+ * at an L2 norm of exactly 1.0 by scripts/probe-vector-store.mjs -- and FAISS's
+ * L2 index returns the *squared* distance. For unit vectors:
+ *
+ *     d^2 = |a-b|^2 = 2 - 2*cos   =>   cos = 1 - d^2/2
+ *
+ * The previous code used `1 - score`, which is not a similarity at all: squared
+ * distance runs to 4, so unrelated documents produced values like -1.29, outside
+ * cosine's range entirely. Combined with a 0.7 threshold it put every real match
+ * (which scores ~0.67 correctly, but 0.345 under the old formula) below the cut,
+ * so the vector store silently returned nothing for every query.
+ */
+export function cosineFromFaissScore(score: number): number {
+    return 1 - score / 2;
+}
+
 /** What retrieveContext returns, and what the cache stores. */
 export interface RetrievedContext {
     context: string;
@@ -69,7 +88,15 @@ export class RAGEngine {
     private vectorStore: any = null; // Type as any since we load dynamically
 
     // Configuration
-    private SIMILARITY_THRESHOLD = 0.7; // As per requirements
+    //
+    // Minimum cosine similarity for a retrieved document to be used as context.
+    //
+    // Calibrated against the actual corpus with scripts/probe-vector-store.mjs:
+    // relevant matches score 0.65-0.67 (a PM-Kisan question against the PM-Kisan
+    // document) while unrelated queries score <=0.25, so 0.5 sits in the gap.
+    // The previous 0.7 was above *every* observed match, so the vector store
+    // never returned anything and every query fell through to network search.
+    private SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || "0.5");
     private LLM_MODEL = "llama-3.3-70b-versatile"; // Latest Groq Model (Replacing decommissioned llama3-8b)
     private OLLAMA_MODEL = "llama3.2:3b";
     private TAVILY_DOMAINS = [".gov.in", ".nic.in"];
@@ -197,14 +224,19 @@ export class RAGEngine {
 
                 if (results.length > 0) {
                     const topScore = results[0][1];
-                    const similarity = 1 - topScore; // standard distance-to-similarity mapping
+                    const similarity = cosineFromFaissScore(topScore);
                     if (similarity >= this.SIMILARITY_THRESHOLD) {
-                        const filteredResults = results.filter(([_, score]: [any, number]) => (1 - score) >= this.SIMILARITY_THRESHOLD);
+                        const filteredResults = results.filter(
+                            ([_, score]: [any, number]) => cosineFromFaissScore(score) >= this.SIMILARITY_THRESHOLD
+                        );
                         context = filteredResults.map(([doc, _]: [any, any]) => doc.pageContent).join("\n\n");
                         citations = filteredResults.map(([doc, _]: [any, any]) => doc.metadata);
                         source = "vector_store";
                     } else {
-                        console.log(`⚠️ Top result similarity (${similarity.toFixed(3)}) is below threshold (${this.SIMILARITY_THRESHOLD}). Treating as a miss.`);
+                        log.debug("Vector store hit below similarity threshold", {
+                            similarity: Number(similarity.toFixed(3)),
+                            threshold: this.SIMILARITY_THRESHOLD,
+                        });
                     }
                 }
             } catch (err) {

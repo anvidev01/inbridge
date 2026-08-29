@@ -1,0 +1,3 @@
+# Raw k6 output is large and machine-specific; the summarised numbers live in
+# loadtest/RESULTS.md, which is committed.
+*.json
