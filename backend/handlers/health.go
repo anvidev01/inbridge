@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/MeitY/inbridge-backend/circuit"
 	"github.com/go-redis/redis/v8"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
@@ -71,11 +72,20 @@ func Liveness() http.HandlerFunc {
 //
 // Checks performed:
 //   - Postgres ping (required)
-//   - Redis ping (required)
+//   - Redis ping (required — rate limiting and session state depend on it)
+//   - At least one LLM provider whose circuit breaker is not open (required)
 //   - AI service HTTP /health (optional — logged but does not block 200)
 //
-// Returns 503 if Postgres or Redis is unreachable.
-func Readiness(db *pgxpool.Pool, rdb *redis.Client, aiServiceURL string) http.HandlerFunc {
+// The LLM check reads breaker state rather than calling the providers: /readyz
+// is polled every few seconds by the orchestrator, and probing three paid APIs
+// on that cadence would cost real money and add provider rate-limit pressure to
+// a service that is already degraded. The breakers are fed by real traffic
+// outcomes, so their state is a truer signal than a synthetic ping anyway.
+//
+// Returns 503 if Postgres or Redis is unreachable, or if every LLM provider has
+// tripped — an instance that cannot answer a chat request should not be in the
+// load balancer.
+func Readiness(db *pgxpool.Pool, rdb *redis.Client, aiServiceURL string, providers *circuit.ProviderRegistry) http.HandlerFunc {
 	client := &http.Client{Timeout: 3 * time.Second}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +113,17 @@ func Readiness(db *pgxpool.Pool, rdb *redis.Client, aiServiceURL string) http.Ha
 			checks["redis"] = "up"
 		}
 
+		// ── LLM providers ──
+		if providers != nil && providers.Len() > 0 {
+			if providers.AnyAvailable() {
+				checks["llm_providers"] = "up"
+			} else {
+				log.Error().Msg("Readiness: every LLM provider circuit breaker is open")
+				checks["llm_providers"] = "down"
+				ready = false
+			}
+		}
+
 		// ── AI service (non-critical) ──
 		if aiServiceURL != "" {
 			resp, err := client.Get(aiServiceURL + "/health")
@@ -124,9 +145,16 @@ func Readiness(db *pgxpool.Pool, rdb *redis.Client, aiServiceURL string) http.Ha
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		body := map[string]interface{}{
 			"status":   status,
 			"services": checks,
-		})
+		}
+		if providers != nil && providers.Len() > 0 {
+			// Per-provider detail so an operator can see *which* provider tripped
+			// without reaching for Grafana.
+			body["llm"] = providers.Snapshot()
+		}
+
+		json.NewEncoder(w).Encode(body)
 	}
 }

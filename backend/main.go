@@ -90,6 +90,18 @@ func main() {
 	)
 	go alerter.Run(alerterCtx)
 
+	// ── LLM provider circuit breakers ──
+	// The failover chain runs in the Next.js chat plane, but its breaker state
+	// lives here: that runtime is ephemeral on Vercel, so consecutive-failure
+	// counts kept there would reset on every cold start and never trip. These
+	// breakers are fed by the outcomes the chat plane reports to
+	// /internal/telemetry/llm, and consulted via /internal/llm/providers.
+	llmBreakers := circuit.NewProviderRegistry(cfg.LLMProviders)
+	log.Info().
+		Strs("providers", cfg.LLMProviders).
+		Int("breakers", llmBreakers.Len()).
+		Msg("LLM provider circuit breakers initialised")
+
 	_ = aiClient // available for future handler injection
 
 	// ── Router ──
@@ -108,7 +120,7 @@ func main() {
 
 	// ── Kubernetes-style health probes ──
 	r.Get("/healthz", handlers.Liveness())
-	r.Get("/readyz", handlers.Readiness(dbPool, rdb, cfg.AIServiceURL))
+	r.Get("/readyz", handlers.Readiness(dbPool, rdb, cfg.AIServiceURL, llmBreakers))
 
 	// ── Internal service-to-service routes ──
 	// Mounted only when a shared secret is configured, so an unconfigured
@@ -116,9 +128,10 @@ func main() {
 	if cfg.InternalAPIToken != "" {
 		r.Route("/internal", func(r chi.Router) {
 			r.Use(middleware.InternalAuth(cfg.InternalAPIToken))
-			r.Post("/telemetry/llm", handlers.TelemetryIngest())
+			r.Post("/telemetry/llm", handlers.TelemetryIngest(llmBreakers))
+			r.Get("/llm/providers", handlers.LLMProviderHealth(llmBreakers))
 		})
-		log.Info().Msg("Internal telemetry ingest mounted at POST /internal/telemetry/llm")
+		log.Info().Msg("Internal routes mounted: POST /internal/telemetry/llm, GET /internal/llm/providers")
 	} else {
 		log.Warn().Msg("INTERNAL_API_TOKEN not set — LLM/RAG telemetry ingest disabled; " +
 			"provider, failover and cache-hit metrics will stay at zero")

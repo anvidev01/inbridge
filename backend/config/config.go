@@ -32,6 +32,10 @@ type Config struct {
 	// InternalAPIToken is the shared secret the Next.js chat plane presents on
 	// /internal/* routes. When empty, internal routes are not mounted at all.
 	InternalAPIToken string
+	// LLMProviders lists the providers this deployment expects the chat plane to
+	// use. One circuit breaker is created per name, and /readyz requires at
+	// least one of them to be closed.
+	LLMProviders []string
 }
 
 func LoadConfig() Config {
@@ -55,6 +59,7 @@ func LoadConfig() Config {
 		AlertErrorRateThreshold:      parseFloat(os.Getenv("ALERT_ERROR_RATE_THRESHOLD"), 0.05),
 		AlertFailoverWindowThreshold: parseInt(os.Getenv("ALERT_FAILOVER_WINDOW_THRESHOLD"), 3),
 		InternalAPIToken:             os.Getenv("INTERNAL_API_TOKEN"),
+		LLMProviders:                 parseCSV(os.Getenv("LLM_PROVIDERS"), []string{"anthropic", "gemini", "groq"}),
 	}
 
 	// Fails fast if required secrets are missing
@@ -210,4 +215,23 @@ func parseInt(s string, def int) int {
 		return def
 	}
 	return v
+}
+
+// parseCSV splits a comma-separated env var, trimming blanks.
+// Returns the default when the variable is unset or contains no usable values.
+func parseCSV(s string, def []string) []string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return def
+	}
+	return out
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MeitY/inbridge-backend/circuit"
 	"github.com/MeitY/inbridge-backend/observability"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -31,9 +32,14 @@ func counterValue(c prometheus.Collector) float64 {
 
 func postBatch(t *testing.T, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return postBatchTo(t, nil, body)
+}
+
+func postBatchTo(t *testing.T, providers *circuit.ProviderRegistry, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/internal/telemetry/llm", strings.NewReader(body))
 	rec := httptest.NewRecorder()
-	TelemetryIngest()(rec, req)
+	TelemetryIngest(providers)(rec, req)
 	return rec
 }
 
@@ -133,5 +139,94 @@ func TestTelemetryIngestMalformedBody(t *testing.T) {
 	rec := postBatch(t, `{"events": not json`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for malformed body, got %d", rec.Code)
+	}
+}
+
+// TestTelemetryIngestFeedsProviderBreakers verifies the loop that makes the
+// breaker useful: the chat plane performs the LLM call, so reported outcomes are
+// the only thing that can trip a provider's breaker.
+func TestTelemetryIngestFeedsProviderBreakers(t *testing.T) {
+	reg := circuit.NewProviderRegistry([]string{"anthropic", "gemini", "groq"})
+
+	if !reg.Available("anthropic") {
+		t.Fatal("a fresh breaker should be closed")
+	}
+
+	// Three consecutive failures is the trip threshold.
+	postBatchTo(t, reg, `{"events":[
+		{"type":"llm_request","provider":"anthropic","outcome":"error","kind":"api_error"},
+		{"type":"llm_request","provider":"anthropic","outcome":"error","kind":"api_error"},
+		{"type":"llm_request","provider":"anthropic","outcome":"error","kind":"api_error"}
+	]}`)
+
+	if reg.Available("anthropic") {
+		t.Fatal("anthropic should be open after 3 consecutive failures")
+	}
+	if !reg.Available("gemini") {
+		t.Fatal("gemini must be unaffected by anthropic's failures")
+	}
+	if !reg.AnyAvailable() {
+		t.Fatal("readiness should still pass while other providers are healthy")
+	}
+}
+
+// TestTelemetryIngestSuccessResetsFailureStreak guards against a provider being
+// tripped by failures scattered between successful requests.
+func TestTelemetryIngestSuccessResetsFailureStreak(t *testing.T) {
+	reg := circuit.NewProviderRegistry([]string{"groq"})
+
+	postBatchTo(t, reg, `{"events":[
+		{"type":"llm_request","provider":"groq","outcome":"error","kind":"api_error"},
+		{"type":"llm_request","provider":"groq","outcome":"error","kind":"api_error"},
+		{"type":"llm_request","provider":"groq","outcome":"success"},
+		{"type":"llm_request","provider":"groq","outcome":"error","kind":"api_error"},
+		{"type":"llm_request","provider":"groq","outcome":"error","kind":"api_error"}
+	]}`)
+
+	if !reg.Available("groq") {
+		t.Fatal("interleaved successes should keep the breaker closed")
+	}
+}
+
+func TestLLMProviderHealthEndpoint(t *testing.T) {
+	reg := circuit.NewProviderRegistry([]string{"anthropic", "gemini"})
+	postBatchTo(t, reg, `{"events":[
+		{"type":"llm_request","provider":"gemini","outcome":"error","kind":"timeout"},
+		{"type":"llm_request","provider":"gemini","outcome":"error","kind":"timeout"},
+		{"type":"llm_request","provider":"gemini","outcome":"error","kind":"timeout"}
+	]}`)
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/llm/providers", nil)
+	rec := httptest.NewRecorder()
+	LLMProviderHealth(reg)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body struct {
+		Providers []circuit.ProviderStatus `json:"providers"`
+		Available []string                 `json:"available"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(body.Available) != 1 || body.Available[0] != "anthropic" {
+		t.Fatalf("expected only anthropic available, got %v", body.Available)
+	}
+	if len(body.Providers) != 2 {
+		t.Fatalf("expected 2 providers in snapshot, got %d", len(body.Providers))
+	}
+}
+
+// TestLLMProviderHealthNilRegistry covers the disabled-breakers deployment.
+func TestLLMProviderHealthNilRegistry(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/internal/llm/providers", nil)
+	rec := httptest.NewRecorder()
+	LLMProviderHealth(nil)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with a nil registry, got %d", rec.Code)
 	}
 }

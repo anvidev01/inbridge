@@ -2,6 +2,7 @@ import { createAnthropicStream } from './anthropic';
 import { createGeminiStream } from './gemini';
 import { createGroqStream } from './groq';
 import { buildChain, PREFERENCE_ORDER } from './chain';
+import { applyBreakerState, availableProviders } from './provider-health';
 import { log } from '../observability/logger';
 import { TelemetryBatch, classifyError, type LLMProvider } from '../observability/telemetry';
 
@@ -46,7 +47,17 @@ export async function routeChatStream(
     systemPromptOverride?: string,
     telemetry?: TelemetryBatch
 ): Promise<RoutedStream> {
-    const chain = buildChain(requestedProvider);
+    const configuredChain = buildChain(requestedProvider);
+
+    // Ask the Go breakers which providers are worth attempting. Providers whose
+    // breaker is open are skipped outright rather than retried until they time
+    // out, which is the whole point of the breaker: a struggling provider costs
+    // nothing instead of costing every request its full timeout.
+    const { chain, skipped } = applyBreakerState(configuredChain, await availableProviders());
+
+    if (skipped.length > 0) {
+        log.info('Skipping providers with an open circuit breaker', { skipped, chain });
+    }
 
     if (chain.length === 0) {
         log.error('No LLM provider is configured', {

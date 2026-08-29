@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/MeitY/inbridge-backend/circuit"
 	"github.com/MeitY/inbridge-backend/observability"
 	"github.com/rs/zerolog/log"
 )
@@ -99,7 +100,12 @@ type TelemetryBatch struct {
 // It always responds 202 for a well-formed batch: telemetry must never become a
 // source of failure for the chat request that emitted it. Individual malformed
 // events are counted as rejected and dropped.
-func TelemetryIngest() http.HandlerFunc {
+//
+// Beyond recording metrics, accepted llm_request outcomes drive the per-provider
+// circuit breakers in `providers`. The chat plane performs the calls, so this is
+// the only place the breakers learn whether a provider is healthy. Pass nil to
+// record metrics without breaker feedback.
+func TelemetryIngest(providers *circuit.ProviderRegistry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
@@ -119,6 +125,9 @@ func TelemetryIngest() http.HandlerFunc {
 		for _, ev := range batch.Events {
 			if recordEvent(ev) {
 				accepted++
+				if providers != nil && ev.Type == eventLLMRequest {
+					providers.Record(ev.Provider, ev.Outcome == "success")
+				}
 				observability.TelemetryEventsTotal.WithLabelValues(ev.Type, "accepted").Inc()
 			} else {
 				rejected++
@@ -212,3 +221,36 @@ func writeJSON(w http.ResponseWriter, status int, body interface{}) {
 const telemetryClientTimeout = 2 * time.Second
 
 var _ = telemetryClientTimeout
+
+// LLMProviderHealth returns the GET /internal/llm/providers handler.
+//
+// The chat plane calls this before building its failover chain and skips any
+// provider reported unavailable, which is what makes a struggling provider get
+// skipped rather than retried until it times out.
+//
+// Callers must fail open: if this endpoint is slow or unreachable, the chat
+// plane should attempt every configured provider. A degraded breaker service
+// must not be able to stop chat from being served.
+func LLMProviderHealth(providers *circuit.ProviderRegistry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if providers == nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"providers": []circuit.ProviderStatus{},
+			})
+			return
+		}
+
+		snapshot := providers.Snapshot()
+		available := make([]string, 0, len(snapshot))
+		for _, p := range snapshot {
+			if p.Available {
+				available = append(available, p.Provider)
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"providers": snapshot,
+			"available": available,
+		})
+	}
+}
