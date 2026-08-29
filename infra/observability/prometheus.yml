@@ -18,6 +18,15 @@ scrape_configs:
     metrics_path: '/metrics'
     scrape_interval: 10s
 
+  # ── Next.js chat plane ──────────────────────────────────────────────────────
+  # Deliberately NOT scraped. The chat plane runs per-request and is ephemeral on
+  # Vercel, so in-process counters there would reset on every cold start. It
+  # instead pushes LLM/RAG events to the Go API's /internal/telemetry/llm, and
+  # those land in the inbridge-go-api job above. Watch the
+  # inbridge_telemetry_events_total series to confirm the chat plane is still
+  # reporting: if it flatlines while HTTP traffic continues, the LLM and RAG
+  # panels are stale rather than healthy.
+
   # ── Python AI Service ───────────────────────────────────────────────────────
   # The AI FastAPI service currently exposes only /health.
   # When prometheus-fastapi-instrumentator is added, uncomment this job.
