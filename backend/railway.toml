@@ -4,7 +4,11 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "/app/inbridge-api"
-healthcheckPath = "/health"
+
+# /healthz is the lightweight liveness probe (process-alive, no DB check).
+# Railway uses this to determine if the deployment succeeded.
+healthcheckPath = "/healthz"
 healthcheckTimeout = 30
+
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
