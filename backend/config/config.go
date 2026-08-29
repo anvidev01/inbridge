@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -20,6 +21,14 @@ type Config struct {
 	DigiLockerClientID  string
 	DigiLockerClientSec string
 	PMKisanAPIKey       string
+	// AIServiceURL is the base URL of the Python FastAPI AI service.
+	AIServiceURL        string
+	// AlertWebhookURL is the Slack/Discord webhook URL for alerting (optional).
+	AlertWebhookURL     string
+	// AlertErrorRateThreshold is the fraction of errors that triggers an alert (0–1).
+	AlertErrorRateThreshold float64
+	// AlertFailoverWindowThreshold is the number of failovers in a 60s window that triggers an alert.
+	AlertFailoverWindowThreshold int
 }
 
 func LoadConfig() Config {
@@ -38,6 +47,10 @@ func LoadConfig() Config {
 		DigiLockerClientID:  os.Getenv("DIGILOCKER_CLIENT_ID"),
 		DigiLockerClientSec: os.Getenv("DIGILOCKER_CLIENT_SECRET"),
 		PMKisanAPIKey:       os.Getenv("PM_KISAN_API_KEY"),
+		AIServiceURL:        getEnvOrDefault("AI_SERVICE_URL", "http://ai-service:8000"),
+		AlertWebhookURL:     os.Getenv("ALERT_WEBHOOK_URL"),
+		AlertErrorRateThreshold:     parseFloat(os.Getenv("ALERT_ERROR_RATE_THRESHOLD"), 0.05),
+		AlertFailoverWindowThreshold: parseInt(os.Getenv("ALERT_FAILOVER_WINDOW_THRESHOLD"), 3),
 	}
 
 	// Fails fast if required secrets are missing
@@ -161,4 +174,36 @@ func validate(c Config) {
 			log.Fatal().Msgf("Missing required environment variable: %s", key)
 		}
 	}
+}
+
+// getEnvOrDefault returns the env variable value or a fallback string.
+func getEnvOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// parseFloat parses a string to float64, returning the default on failure.
+func parseFloat(s string, def float64) float64 {
+	if s == "" {
+		return def
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+// parseInt parses a string to int, returning the default on failure.
+func parseInt(s string, def int) int {
+	if s == "" {
+		return def
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return def
+	}
+	return v
 }

@@ -9,10 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/MeitY/inbridge-backend/alerting"
+	"github.com/MeitY/inbridge-backend/circuit"
 	"github.com/MeitY/inbridge-backend/config"
 	"github.com/MeitY/inbridge-backend/db"
 	"github.com/MeitY/inbridge-backend/handlers"
 	"github.com/MeitY/inbridge-backend/middleware"
+	"github.com/MeitY/inbridge-backend/observability"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -24,7 +27,14 @@ import (
 
 func main() {
 	zerolog.TimeFieldFormat = time.RFC3339
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339})
+	// Use structured JSON logging in production; pretty console when LOG_FORMAT=console.
+	if os.Getenv("LOG_FORMAT") == "console" {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339})
+	} else {
+		// Pure JSON — compatible with log aggregators (Loki, CloudWatch, Datadog, etc.)
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+	}
 
 	cfg := config.LoadConfig()
 
@@ -63,17 +73,44 @@ func main() {
 	rdb := initRedis(cfg.RedisURL)
 	defer rdb.Close()
 
+	// ── AI Service Circuit Breaker ──
+	aiClient := circuit.NewAIClient(cfg.AIServiceURL)
+	log.Info().
+		Str("ai_service_url", cfg.AIServiceURL).
+		Str("circuit_breaker", aiClient.State().String()).
+		Msg("AI service circuit breaker initialised")
+
+	// ── Alerter (background goroutine) ──
+	alerterCtx, alerterCancel := context.WithCancel(context.Background())
+	defer alerterCancel()
+	alerter := alerting.New(
+		cfg.AlertWebhookURL,
+		cfg.AlertErrorRateThreshold,
+		cfg.AlertFailoverWindowThreshold,
+	)
+	go alerter.Run(alerterCtx)
+
+	_ = aiClient // available for future handler injection
+
 	// ── Router ──
 	r := chi.NewRouter()
 
-	// Global middleware
+	// Global middleware — order matters: metrics first so all paths are tracked.
+	r.Use(middleware.MetricsMiddleware)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.CorsMiddleware(cfg.CORSAllowedOrigins))
 
-	// ── Generic Healthchecks (Railway root) ──
+	// ── Observability (no auth required) ──
+	r.Get("/metrics", observability.Handler().ServeHTTP)
+
+	// ── Kubernetes-style health probes ──
+	r.Get("/healthz", handlers.Liveness())
+	r.Get("/readyz", handlers.Readiness(dbPool, rdb, cfg.AIServiceURL))
+
+	// ── Generic Healthchecks (Railway root / legacy) ──
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
