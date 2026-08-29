@@ -5,12 +5,12 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/MeitY/inbridge-backend/observability"
+	"github.com/go-chi/chi/v5"
 )
 
 // skipMetricsPaths holds routes that should not be tracked in latency histograms.
@@ -23,6 +23,9 @@ var skipMetricsPaths = map[string]bool{
 // MetricsMiddleware wraps each HTTP handler, capturing:
 //   - Request duration → RequestDuration histogram
 //   - HTTP errors (status >= 400) → ErrorsTotal counter
+//
+// The "path" label is the chi *route pattern* (e.g. /api/v1/grievance/{id}),
+// never the raw URL, so that per-ID paths cannot explode label cardinality.
 func MetricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -31,10 +34,13 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
-		path := r.URL.Path
-		if skipMetricsPaths[path] {
+		if skipMetricsPaths[r.URL.Path] {
 			return
 		}
+
+		// Read the matched route pattern *after* the handler has run — chi only
+		// fills RouteContext during routing.
+		path := NormalisePath(routePattern(r), r.URL.Path)
 
 		method := r.Method
 		status := strconv.Itoa(rec.statusCode)
@@ -50,6 +56,15 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 				Inc()
 		}
 	})
+}
+
+// routePattern extracts the chi route pattern for the request, if chi routed it.
+func routePattern(r *http.Request) string {
+	rctx := chi.RouteContext(r.Context())
+	if rctx == nil {
+		return ""
+	}
+	return rctx.RoutePattern()
 }
 
 // statusRecorder is a minimal ResponseWriter that captures the status code.
@@ -78,12 +93,23 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 	return sr.ResponseWriter.Write(b)
 }
 
-// NormalisePath converts chi URL params like /api/v1/grievance/abc-123 to
-// /api/v1/grievance/:id, preventing high-cardinality label explosions.
-// Use this in handlers that call observability metrics directly.
+// NormalisePath converts a chi route pattern into a bounded, low-cardinality
+// Prometheus label value.
+//
+// Prometheus label cardinality is the product of every label's distinct values,
+// so an unbounded "path" label (one series per grievance UUID, one per ARN) will
+// grow the TSDB without limit. Every request therefore collapses to one of a
+// finite set of route patterns, and anything chi did not route — 404s, probes
+// from scanners — collapses to the single constant "unmatched".
 func NormalisePath(routePattern, rawPath string) string {
-	if routePattern != "" {
+	switch routePattern {
+	case "":
+		// chi did not match a route (404) — never label with the raw URL.
+		return "unmatched"
+	case "/*":
+		// chi's catch-all: also effectively unrouted.
+		return "unmatched"
+	default:
 		return routePattern
 	}
-	return fmt.Sprintf("%s (raw)", rawPath)
 }

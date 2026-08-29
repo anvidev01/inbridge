@@ -112,3 +112,53 @@ var AlertsFiredTotal = promauto.NewCounterVec(
 func Handler() http.Handler {
 	return promhttp.Handler()
 }
+
+// ── LLM latency & outcome ─────────────────────────────────────────────────────
+
+// LLMRequestDuration tracks end-to-end LLM completion latency per provider.
+// Labels: provider, outcome (success / error).
+var LLMRequestDuration = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name: "inbridge_llm_request_duration_seconds",
+		Help: "Duration of LLM completions in seconds, by provider and outcome.",
+		// LLM calls are far slower than HTTP CRUD — use wider buckets than DefBuckets.
+		Buckets: []float64{0.25, 0.5, 1, 2, 3, 5, 8, 12, 20, 30, 60},
+	},
+	[]string{"provider", "outcome"},
+)
+
+// LLMErrorsTotal counts failed LLM attempts per provider.
+// A failover event produces one error here (the provider that failed) plus one
+// LLMFailoversTotal increment (the from→to transition).
+var LLMErrorsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "inbridge_llm_errors_total",
+		Help: "Total number of failed LLM attempts, labelled by provider and error kind.",
+	},
+	[]string{"provider", "kind"},
+)
+
+// ── RAG retrieval ─────────────────────────────────────────────────────────────
+
+// RAGRetrievalDuration tracks context-retrieval latency.
+// Labels: source (cache / vector_store / tavily_search / llm_direct).
+var RAGRetrievalDuration = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "inbridge_rag_retrieval_duration_seconds",
+		Help:    "Duration of RAG context retrieval in seconds, by resolved source.",
+		Buckets: []float64{0.005, 0.025, 0.1, 0.25, 0.5, 1, 2, 4, 8},
+	},
+	[]string{"source"},
+)
+
+// ── Telemetry ingest ──────────────────────────────────────────────────────────
+
+// TelemetryEventsTotal counts events accepted from the Next.js chat plane.
+// Labels: type (llm_request / llm_failover / rag_cache), status (accepted / rejected).
+var TelemetryEventsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "inbridge_telemetry_events_total",
+		Help: "Total telemetry events received from the chat plane, by type and acceptance status.",
+	},
+	[]string{"type", "status"},
+)

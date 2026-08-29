@@ -16,19 +16,22 @@ type Config struct {
 	RedisURL            string
 	JWT_PrivateKey      string
 	JWT_PublicKey       string
-	CORSAllowedOrigins string
+	CORSAllowedOrigins  string
 	UIDAI_API_URL       string
 	DigiLockerClientID  string
 	DigiLockerClientSec string
 	PMKisanAPIKey       string
 	// AIServiceURL is the base URL of the Python FastAPI AI service.
-	AIServiceURL        string
+	AIServiceURL string
 	// AlertWebhookURL is the Slack/Discord webhook URL for alerting (optional).
-	AlertWebhookURL     string
+	AlertWebhookURL string
 	// AlertErrorRateThreshold is the fraction of errors that triggers an alert (0–1).
 	AlertErrorRateThreshold float64
 	// AlertFailoverWindowThreshold is the number of failovers in a 60s window that triggers an alert.
 	AlertFailoverWindowThreshold int
+	// InternalAPIToken is the shared secret the Next.js chat plane presents on
+	// /internal/* routes. When empty, internal routes are not mounted at all.
+	InternalAPIToken string
 }
 
 func LoadConfig() Config {
@@ -37,20 +40,21 @@ func LoadConfig() Config {
 	_ = godotenv.Load("../infra/.env")
 
 	cfg := Config{
-		Port:                os.Getenv("PORT"),
-		DBURL:               os.Getenv("DATABASE_URL"),
-		RedisURL:            os.Getenv("REDIS_URL"),
-		JWT_PrivateKey:      loadKey(os.Getenv("JWT_PRIVATE_KEY"), "keys/jwt.key"),
-		JWT_PublicKey:       loadKey(os.Getenv("JWT_PUBLIC_KEY"), "keys/jwt.key.pub"),
-		CORSAllowedOrigins: os.Getenv("CORS_ALLOWED_ORIGINS"),
-		UIDAI_API_URL:       os.Getenv("UIDAI_API_URL"),
-		DigiLockerClientID:  os.Getenv("DIGILOCKER_CLIENT_ID"),
-		DigiLockerClientSec: os.Getenv("DIGILOCKER_CLIENT_SECRET"),
-		PMKisanAPIKey:       os.Getenv("PM_KISAN_API_KEY"),
-		AIServiceURL:        getEnvOrDefault("AI_SERVICE_URL", "http://ai-service:8000"),
-		AlertWebhookURL:     os.Getenv("ALERT_WEBHOOK_URL"),
-		AlertErrorRateThreshold:     parseFloat(os.Getenv("ALERT_ERROR_RATE_THRESHOLD"), 0.05),
+		Port:                         os.Getenv("PORT"),
+		DBURL:                        os.Getenv("DATABASE_URL"),
+		RedisURL:                     os.Getenv("REDIS_URL"),
+		JWT_PrivateKey:               loadKey(os.Getenv("JWT_PRIVATE_KEY"), "keys/jwt.key"),
+		JWT_PublicKey:                loadKey(os.Getenv("JWT_PUBLIC_KEY"), "keys/jwt.key.pub"),
+		CORSAllowedOrigins:           os.Getenv("CORS_ALLOWED_ORIGINS"),
+		UIDAI_API_URL:                os.Getenv("UIDAI_API_URL"),
+		DigiLockerClientID:           os.Getenv("DIGILOCKER_CLIENT_ID"),
+		DigiLockerClientSec:          os.Getenv("DIGILOCKER_CLIENT_SECRET"),
+		PMKisanAPIKey:                os.Getenv("PM_KISAN_API_KEY"),
+		AIServiceURL:                 getEnvOrDefault("AI_SERVICE_URL", "http://ai-service:8000"),
+		AlertWebhookURL:              os.Getenv("ALERT_WEBHOOK_URL"),
+		AlertErrorRateThreshold:      parseFloat(os.Getenv("ALERT_ERROR_RATE_THRESHOLD"), 0.05),
 		AlertFailoverWindowThreshold: parseInt(os.Getenv("ALERT_FAILOVER_WINDOW_THRESHOLD"), 3),
+		InternalAPIToken:             os.Getenv("INTERNAL_API_TOKEN"),
 	}
 
 	// Fails fast if required secrets are missing
@@ -114,17 +118,17 @@ func loadKey(envVal, filePath string) string {
 
 			// Final trim
 			val = strings.TrimSpace(val)
-			
+
 			// Header Validation Check
-			if !strings.HasPrefix(val, "-----BEGIN RSA PRIVATE KEY-----") && 
-			   !strings.HasPrefix(val, "-----BEGIN PRIVATE KEY-----") &&
-			   !strings.HasPrefix(val, "-----BEGIN PUBLIC KEY-----") {
+			if !strings.HasPrefix(val, "-----BEGIN RSA PRIVATE KEY-----") &&
+				!strings.HasPrefix(val, "-----BEGIN PRIVATE KEY-----") &&
+				!strings.HasPrefix(val, "-----BEGIN PUBLIC KEY-----") {
 				log.Warn().Str("prefix", val).Msg("Key contains 'BEGIN' but its prefix does not exactly match standard PKCS1/PKCS8 boundaries")
 			}
 
 			return val
 		}
-		
+
 		return val
 	}
 

@@ -44,7 +44,7 @@ func main() {
 	if len(privKeyStr) < previewLen {
 		previewLen = len(privKeyStr)
 	}
-	
+
 	log.Debug().
 		Int("key_len", len(privKeyStr)).
 		Str("prefix", privKeyStr[:previewLen]).
@@ -109,6 +109,20 @@ func main() {
 	// ── Kubernetes-style health probes ──
 	r.Get("/healthz", handlers.Liveness())
 	r.Get("/readyz", handlers.Readiness(dbPool, rdb, cfg.AIServiceURL))
+
+	// ── Internal service-to-service routes ──
+	// Mounted only when a shared secret is configured, so an unconfigured
+	// deployment exposes no internal surface at all.
+	if cfg.InternalAPIToken != "" {
+		r.Route("/internal", func(r chi.Router) {
+			r.Use(middleware.InternalAuth(cfg.InternalAPIToken))
+			r.Post("/telemetry/llm", handlers.TelemetryIngest())
+		})
+		log.Info().Msg("Internal telemetry ingest mounted at POST /internal/telemetry/llm")
+	} else {
+		log.Warn().Msg("INTERNAL_API_TOKEN not set — LLM/RAG telemetry ingest disabled; " +
+			"provider, failover and cache-hit metrics will stay at zero")
+	}
 
 	// ── Generic Healthchecks (Railway root / legacy) ──
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
