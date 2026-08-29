@@ -344,7 +344,7 @@ audit_log (id, citizen_id, action, entity, entity_id, ip_addr, created_at)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DB_URL` | PostgreSQL connection string | — |
+| `DATABASE_URL` | PostgreSQL connection string | — |
 | `REDIS_URL` | Redis connection string | — |
 | `PORT` | API server port | `8080` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated allowed origins | `http://localhost:3000` |
@@ -356,14 +356,38 @@ audit_log (id, citizen_id, action, entity, entity_id, ip_addr, created_at)
 | `PM_KISAN_API_KEY` | PM-KISAN beneficiary API key | — |
 | `OPENAI_API_KEY` | OpenAI key (optional, for AI service) | — |
 | `GROQ_API_KEY` | Groq API key (for LLM inference) | — |
+| `LOG_FORMAT` | `console` for pretty local logs; anything else = JSON | JSON |
+
+### Observability & alerting (backend)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `INTERNAL_API_TOKEN` | Shared secret for `/internal/*`. **When unset, the internal routes are not mounted and LLM/RAG metrics stay at zero.** Must match the frontend value. | — |
+| `LLM_PROVIDERS` | Comma-separated providers to create circuit breakers for | `anthropic,gemini,groq` |
+| `ALERT_WEBHOOK_URL` | Slack or Discord incoming webhook. Payload shape is chosen from the host. Unset = alerting disabled. | — |
+| `ALERT_ERROR_RATE_THRESHOLD` | Error fraction (0–1) that fires an alert | `0.05` |
+| `ALERT_FAILOVER_WINDOW_THRESHOLD` | Failovers per 60s window that fires an alert | `3` |
+| `AI_SERVICE_URL` | Python AI service base URL | `http://ai-service:8000` |
 
 ### Frontend
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `NEXT_PUBLIC_API_URL` | Go API base URL (must be reachable by browser) | `http://localhost:8080` |
+| `INTERNAL_METRICS_URL` | Go API base URL as reachable **server-side**. Falls back to `NEXT_PUBLIC_API_URL`. | — |
+| `INTERNAL_API_TOKEN` | Must match the backend value, or telemetry is rejected with 401 | — |
+| `ACTIVE_AI_PROVIDER` | Primary LLM provider (`anthropic` / `gemini` / `groq`) | `anthropic` |
+| `ANTHROPIC_API_KEY` / `GOOGLE_GEMINI_API_KEY` / `GROQ_API_KEY` | Provider keys. Providers without a key are dropped from the failover chain rather than attempted. | — |
+| `LOG_LEVEL` | `debug` / `info` / `warn` / `error` | `info` |
+| `RAG_SIMILARITY_THRESHOLD` | Minimum cosine similarity for retrieved context. See `loadtest/RESULTS.md` for how it was calibrated. | `0.5` |
+| `RAG_CACHE_MAX_ENTRIES` | LRU capacity for retrieval results | `500` |
+| `RAG_CACHE_TTL_MS` | Retrieval cache TTL. `0` disables reuse (used as the load-test control). | `900000` |
+| `PROVIDER_HEALTH_TTL_MS` | How long circuit-breaker state is cached before re-querying | `5000` |
+| `CHAT_RATE_LIMIT_PER_MIN` | Per-IP chat rate limit | `20` |
 
-> ⚠️ **Important**: `NEXT_PUBLIC_API_URL` must be the URL your **browser** can reach, not a Docker-internal hostname like `go-api:8080`.
+> ⚠️ **Important**: `NEXT_PUBLIC_API_URL` must be the URL your **browser** can reach, not a Docker-internal hostname like `go-api:8080`. `INTERNAL_METRICS_URL` is the opposite — it is used server-side only, so a Docker-internal hostname is correct there.
+
+> ⚠️ **`INTERNAL_API_TOKEN` must be set on both sides.** The LLM failover chain and RAG retrieval run in the Next.js process, but their counters live in the Go process (the Next.js runtime is ephemeral on Vercel, so counters there reset on every cold start). Without a matching token on both sides the chat plane cannot report, so provider usage, failover counts and RAG cache hit rate stay at zero and the failover-spike alert can never fire. Watch `inbridge_telemetry_events_total` to confirm the link is live.
 
 ---
 
