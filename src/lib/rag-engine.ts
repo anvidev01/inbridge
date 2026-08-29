@@ -1,5 +1,4 @@
 
-import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/huggingface_transformers";
 import { ChatOllama } from "@langchain/ollama";
 import { ChatGroq } from "@langchain/groq";
 import { tavily } from "@tavily/core";
@@ -29,7 +28,7 @@ const PROMPTS: Record<Language, string> = {
 
 export class RAGEngine {
     private vectorStorePath: string;
-    private embeddings: HuggingFaceTransformersEmbeddings;
+    private embeddings: any; // Dynamic type
     private llm: ChatOllama | ChatGroq;
     private tavilyClient: any; // Using any for now as @tavily/core types might vary
     private isInitialized: boolean = false;
@@ -43,11 +42,6 @@ export class RAGEngine {
 
     constructor() {
         this.vectorStorePath = path.join(process.cwd(), "vector_store");
-
-        // Initialize Embeddings
-        this.embeddings = new HuggingFaceTransformersEmbeddings({
-            model: "Xenova/all-MiniLM-L6-v2",
-        });
 
         // Initialize LLM (Groq Preferred for Vercel, Ollama fallback)
         const groqApiKey = process.env.GROQ_API_KEY;
@@ -82,6 +76,13 @@ export class RAGEngine {
 
         try {
             console.log(`Loading vector store from: ${this.vectorStorePath}`);
+            
+            // Dynamic import to prevent startup crash on Vercel
+            const { HuggingFaceTransformersEmbeddings } = await import("@langchain/community/embeddings/huggingface_transformers");
+            this.embeddings = new HuggingFaceTransformersEmbeddings({
+                model: "Xenova/all-MiniLM-L6-v2",
+            });
+
             // Dynamic import to prevent startup crash if binary is missing/incompatible
             const { FaissStore } = await import("@langchain/community/vectorstores/faiss");
 
