@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'local'
+    service: 'inbridge'
+
+alerting:
+  alertmanagers: []
+
+rule_files: []
+
+scrape_configs:
+  # ── Go Backend ──────────────────────────────────────────────────────────────
+  - job_name: 'inbridge-go-api'
+    static_configs:
+      - targets: ['inbridge-api:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # ── Python AI Service ───────────────────────────────────────────────────────
+  # The AI FastAPI service currently exposes only /health.
+  # When prometheus-fastapi-instrumentator is added, uncomment this job.
+  # - job_name: 'inbridge-ai-service'
+  #   static_configs:
+  #     - targets: ['inbridge-ai:8000']
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 15s
+
+  # ── Prometheus self-scrape ──────────────────────────────────────────────────
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
