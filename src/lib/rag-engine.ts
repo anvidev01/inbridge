@@ -91,12 +91,16 @@ export class RAGEngine {
     //
     // Minimum cosine similarity for a retrieved document to be used as context.
     //
-    // Calibrated against the actual corpus with scripts/probe-vector-store.mjs:
-    // relevant matches score 0.65-0.67 (a PM-Kisan question against the PM-Kisan
-    // document) while unrelated queries score <=0.25, so 0.5 sits in the gap.
-    // The previous 0.7 was above *every* observed match, so the vector store
-    // never returned anything and every query fell through to network search.
-    private SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || "0.5");
+    // Calibrated against the live corpus (4,740 scheme docs from the myScheme
+    // catalogue). Measured cosine (via cosineFromFaissScore) at this scale:
+    //   - precise queries naming a scheme:      0.60 - 0.67
+    //   - vague real queries ("health insurance for poor families"): 0.40 - 0.54
+    //   - unrelated / adversarial queries:       <= 0.24
+    // Real-query scores compress downward versus the tiny 3-doc corpus (more
+    // competing neighbours, terse official descriptions), so 0.35 fits the new
+    // distribution: it recovers vague real queries while staying a clear 0.11
+    // above the adversarial ceiling. Override with RAG_SIMILARITY_THRESHOLD.
+    private SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || "0.35");
     private LLM_MODEL = "llama-3.3-70b-versatile"; // Latest Groq Model (Replacing decommissioned llama3-8b)
     private OLLAMA_MODEL = "llama3.2:3b";
     private TAVILY_DOMAINS = [".gov.in", ".nic.in"];
