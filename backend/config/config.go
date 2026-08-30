@@ -69,7 +69,10 @@ func LoadConfig() Config {
 		cfg.Port = "8080"
 	}
 	if cfg.CORSAllowedOrigins == "" {
-		cfg.CORSAllowedOrigins = "http://localhost:3000"
+		// Include the production frontend by default so a missing
+		// CORS_ALLOWED_ORIGINS env var does not silently block the live site.
+		// Override in production via CORS_ALLOWED_ORIGINS.
+		cfg.CORSAllowedOrigins = "http://localhost:3000,https://inbridge.in,https://www.inbridge.in"
 	}
 
 	return cfg
