@@ -3,7 +3,7 @@ import { checkGuardrails } from '@/lib/guardrails';
 import { RAGEngine } from '@/lib/rag-engine';
 import { routeChatStream } from '@/lib/ai/router';
 import { systemPrompt } from '@/lib/ai/system-prompt';
-import { UIMessage } from 'ai';
+import { UIMessage, createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -116,41 +116,38 @@ ${context}
         // Execute failover stream selection
         const rawStream = await routeChatStream(routerMessages, undefined, fullSystemPrompt);
 
-        // 7. Construct Response Stream using Vercel AI SDK Data Stream protocol
-        const encoder = new TextEncoder();
-        const readableStream = new ReadableStream({
-            async start(controller) {
-                // Prep and send sources JSON block
-                const sourcesBlock = `---SOURCES---\n${JSON.stringify(
-                    citations.map(c => ({ title: c.title || 'Source', url: c.url || '' }))
-                )}\n---END_SOURCES---\n`;
-                
-                controller.enqueue(encoder.encode(`0:${JSON.stringify(sourcesBlock)}\n`));
+        // 7. Emit an AI SDK v6 UI message stream.
+        // The frontend uses useChat + DefaultChatTransport (AI SDK v6), which
+        // parses the v6 UI-message-stream (text-start / text-delta / text-end),
+        // NOT the legacy v4 `0:"..."` data-stream protocol. Emitting v4 here
+        // left message.parts empty on the client, so nothing rendered.
+        //
+        // Sources ride at the front of the same text part; MessageBubble splits
+        // the ---SOURCES---...---END_SOURCES--- block back out of the text.
+        const sourcesBlock = `---SOURCES---\n${JSON.stringify(
+            citations.map((c: any) => ({ title: c.title || 'Source', url: c.url || '' }))
+        )}\n---END_SOURCES---\n`;
 
+        const stream = createUIMessageStream({
+            execute: async ({ writer }) => {
+                const id = 'assistant-text';
+                writer.write({ type: 'text-start', id });
+                writer.write({ type: 'text-delta', id, delta: sourcesBlock });
                 try {
-                    const textChunks = normalizeStream(rawStream);
-                    for await (const chunk of textChunks) {
-                        if (chunk) {
-                            controller.enqueue(encoder.encode(`0:${JSON.stringify(chunk)}\n`));
-                        }
+                    for await (const chunk of normalizeStream(rawStream)) {
+                        if (chunk) writer.write({ type: 'text-delta', id, delta: chunk });
                     }
-                } catch (error: any) {
-                    console.error("Stream pipe error:", error);
-                    controller.enqueue(encoder.encode(`3:${JSON.stringify(error.message || 'Stream error')}\n`));
                 } finally {
-                    controller.close();
+                    writer.write({ type: 'text-end', id });
                 }
-            }
+            },
+            onError: (error: unknown) => {
+                console.error('Chat stream error:', error);
+                return error instanceof Error ? error.message : 'An error occurred while generating the response.';
+            },
         });
 
-        return new Response(readableStream, {
-            headers: {
-                'Content-Type': 'text/plain; charset=utf-8',
-                'x-vercel-ai-data-stream': 'v1',
-                'Cache-Control': 'no-cache, no-transform',
-                'Connection': 'keep-alive',
-            }
-        });
+        return createUIMessageStreamResponse({ stream });
 
     } catch (error: any) {
         console.error('Chat API Error:', error);
