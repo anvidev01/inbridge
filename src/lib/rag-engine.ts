@@ -101,7 +101,7 @@ export class RAGEngine {
     // distribution: it recovers vague real queries while staying a clear 0.11
     // above the adversarial ceiling. Override with RAG_SIMILARITY_THRESHOLD.
     private SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || "0.35");
-    private LLM_MODEL = "llama-3.3-70b-versatile"; // Latest Groq Model (Replacing decommissioned llama3-8b)
+    private LLM_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b"; // llama-3.3-70b-versatile was retired from Groq
     private OLLAMA_MODEL = "llama3.2:3b";
     private TAVILY_DOMAINS = [".gov.in", ".nic.in"];
 

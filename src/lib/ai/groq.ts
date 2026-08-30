@@ -14,7 +14,10 @@ export async function createGroqStream(messages: Message[], modelOverride?: stri
     }
 
     const groq = createGroq({ apiKey });
-    const modelName = modelOverride || 'llama-3.3-70b-versatile';
+    // llama-3.3-70b-versatile was retired from Groq; qwen3.8-27b is a current,
+    // multilingual-capable replacement (important for InBridge's Hindi/regional
+    // responses). Override with GROQ_MODEL.
+    const modelName = modelOverride || process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
     const maxTokens = parseInt(process.env.CHAT_MAX_TOKENS || '2048', 10);
     const sysPrompt = systemPromptOverride || defaultSystemPrompt;
 
