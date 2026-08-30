@@ -47,6 +47,11 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# The RAG pipeline reads the FAISS index from ./vector_store at runtime. The
+# standalone trace does not include data directories, so copy it explicitly or
+# scheme retrieval silently falls through to web search.
+COPY --from=builder --chown=nextjs:nodejs /app/vector_store ./vector_store
+
 USER nextjs
 
 EXPOSE 3000
