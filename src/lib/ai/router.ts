@@ -1,110 +1,106 @@
 import { createAnthropicStream } from './anthropic';
 import { createGeminiStream } from './gemini';
 import { createGroqStream } from './groq';
-import { buildChain, PREFERENCE_ORDER } from './chain';
-import { applyBreakerState, availableProviders } from './provider-health';
-import { log } from '../observability/logger';
-import { TelemetryBatch, classifyError, type LLMProvider } from '../observability/telemetry';
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
     content: string;
 }
 
-export interface RoutedStream {
-    /** The provider-specific stream object, normalised by the caller. */
-    stream: unknown;
-    /** Which provider actually produced the stream. */
-    provider: LLMProvider;
-    /** How many providers failed before this one succeeded. */
-    failovers: number;
-}
-
-async function invoke(
-    provider: LLMProvider,
-    messages: Message[],
-    systemPromptOverride?: string
-): Promise<unknown> {
-    switch (provider) {
-        case 'anthropic':
-            return createAnthropicStream(messages, undefined, systemPromptOverride);
-        case 'gemini':
-            return await createGeminiStream(messages, undefined, systemPromptOverride);
-        case 'groq':
-            return await createGroqStream(messages, undefined, systemPromptOverride);
-    }
-}
-
-/**
- * Streams a chat completion, falling through the provider chain on failure.
- *
- * Emits one llm_request event per attempt and one llm_failover event per
- * transition into the telemetry batch, which the caller flushes.
- */
 export async function routeChatStream(
     messages: Message[],
-    requestedProvider?: LLMProvider,
-    systemPromptOverride?: string,
-    telemetry?: TelemetryBatch
-): Promise<RoutedStream> {
-    const configuredChain = buildChain(requestedProvider);
+    requestedProvider?: 'anthropic' | 'gemini' | 'groq',
+    systemPromptOverride?: string
+) {
+    const defaultProvider = process.env.ACTIVE_AI_PROVIDER || 'anthropic';
+    const provider = requestedProvider || defaultProvider;
 
-    // Ask the Go breakers which providers are worth attempting. Providers whose
-    // breaker is open are skipped outright rather than retried until they time
-    // out, which is the whole point of the breaker: a struggling provider costs
-    // nothing instead of costing every request its full timeout.
-    const { chain, skipped } = applyBreakerState(configuredChain, await availableProviders());
+    const tryAnthropic = async () => {
+        if (process.env.ANTHROPIC_API_KEY) {
+            console.log("Trying Anthropic stream...");
+            return createAnthropicStream(messages, undefined, systemPromptOverride);
+        }
+        throw new Error("Anthropic key missing");
+    };
 
-    if (skipped.length > 0) {
-        log.info('Skipping providers with an open circuit breaker', { skipped, chain });
-    }
+    const tryGemini = async () => {
+        if (process.env.GOOGLE_GEMINI_API_KEY) {
+            console.log("Trying Gemini stream...");
+            return await createGeminiStream(messages, undefined, systemPromptOverride);
+        }
+        throw new Error("Gemini key missing");
+    };
 
-    if (chain.length === 0) {
-        log.error('No LLM provider is configured', {
-            checked: PREFERENCE_ORDER,
-        });
-        throw new Error(
-            'No LLM provider is configured. Set at least one of ANTHROPIC_API_KEY, GOOGLE_GEMINI_API_KEY or GROQ_API_KEY.'
-        );
-    }
+    const tryGroq = async () => {
+        if (process.env.GROQ_API_KEY) {
+            console.log("Trying Groq stream...");
+            return await createGroqStream(messages, undefined, systemPromptOverride);
+        }
+        throw new Error("Groq key missing");
+    };
 
-    log.debug('LLM failover chain resolved', { chain, length: chain.length });
-
-    let firstError: unknown = null;
-    let failovers = 0;
-
-    for (let i = 0; i < chain.length; i++) {
-        const provider = chain[i];
-        const started = Date.now();
-
+    if (provider === 'gemini') {
         try {
-            const stream = await invoke(provider, messages, systemPromptOverride);
-            const elapsed = Date.now() - started;
-
-            telemetry?.llmSuccess(provider, elapsed);
-            log.info('LLM stream opened', { provider, duration_ms: elapsed, failovers });
-
-            return { stream, provider, failovers };
+            return await tryGemini();
         } catch (error) {
-            const elapsed = Date.now() - started;
-            const kind = classifyError(error);
-
-            telemetry?.llmError(provider, elapsed, kind);
-            log.warn('LLM provider failed', { provider, kind, duration_ms: elapsed, error });
-
-            if (firstError === null) firstError = error;
-
-            const next = chain[i + 1];
-            if (next) {
-                failovers++;
-                telemetry?.failover(provider, next, kind);
-                log.warn('Failing over to next provider', { from: provider, to: next, kind });
+            console.error("Primary provider (Gemini) failed:", error);
+            if (defaultProvider === 'both') {
+                try {
+                    console.log("Falling back to Anthropic...");
+                    return await tryAnthropic();
+                } catch (fallbackError) {
+                    console.error("Secondary fallback (Anthropic) failed:", fallbackError);
+                }
+            }
+            try {
+                console.log("Falling back to tertiary provider (Groq)...");
+                return await tryGroq();
+            } catch (tertiaryError) {
+                console.error("Tertiary provider (Groq) failed:", tertiaryError);
+                throw error;
             }
         }
     }
 
-    log.error('All LLM providers in the chain failed', { chain });
-    // Surface the primary provider's error: it is the one an operator needs to
-    // fix, and the downstream failures are usually the same outage.
-    throw firstError ?? new Error('All LLM providers failed');
+    if (provider === 'groq') {
+        try {
+            return await tryGroq();
+        } catch (error) {
+            console.error("Primary provider (Groq) failed:", error);
+            try {
+                console.log("Falling back to Anthropic...");
+                return await tryAnthropic();
+            } catch (fallbackError) {
+                try {
+                    console.log("Falling back to Gemini...");
+                    return await tryGemini();
+                } catch (tertiaryError) {
+                    throw error;
+                }
+            }
+        }
+    }
+
+    // Default to Anthropic
+    try {
+        return await tryAnthropic();
+    } catch (error) {
+        console.error("Primary provider (Anthropic) failed:", error);
+        if (defaultProvider === 'both') {
+            try {
+                console.log("Falling back to Gemini...");
+                return await tryGemini();
+            } catch (fallbackError) {
+                console.error("Secondary fallback (Gemini) failed:", fallbackError);
+            }
+        }
+        try {
+            console.log("Falling back to tertiary provider (Groq)...");
+            return await tryGroq();
+        } catch (tertiaryError) {
+            console.error("Tertiary provider (Groq) failed:", tertiaryError);
+            throw error;
+        }
+    }
 }
+
