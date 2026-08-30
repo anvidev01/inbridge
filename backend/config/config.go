@@ -170,20 +170,32 @@ func decodeEnvVar(val string) string {
 }
 
 func validate(c Config) {
+	// Hard requirements: the service cannot serve auth without these, so a
+	// missing one is fatal.
 	required := map[string]string{
-		"DATABASE_URL":             c.DBURL,
-		"REDIS_URL":                c.RedisURL,
-		"JWT_PRIVATE_KEY":          c.JWT_PrivateKey,
-		"JWT_PUBLIC_KEY":           c.JWT_PublicKey,
+		"DATABASE_URL":    c.DBURL,
+		"REDIS_URL":       c.RedisURL,
+		"JWT_PRIVATE_KEY": c.JWT_PrivateKey,
+		"JWT_PUBLIC_KEY":  c.JWT_PublicKey,
+	}
+	for key, val := range required {
+		if val == "" {
+			log.Fatal().Msgf("Missing required environment variable: %s", key)
+		}
+	}
+
+	// Optional external integrations: login, profiles and grievances work
+	// without these. Only the specific feature that calls them degrades until
+	// they are set, so warn rather than refuse to boot.
+	optional := map[string]string{
 		"UIDAI_API_URL":            c.UIDAI_API_URL,
 		"DIGILOCKER_CLIENT_ID":     c.DigiLockerClientID,
 		"DIGILOCKER_CLIENT_SECRET": c.DigiLockerClientSec,
 		"PM_KISAN_API_KEY":         c.PMKisanAPIKey,
 	}
-
-	for key, val := range required {
+	for key, val := range optional {
 		if val == "" {
-			log.Fatal().Msgf("Missing required environment variable: %s", key)
+			log.Warn().Msgf("Optional integration env var not set: %s (the feature using it will be unavailable)", key)
 		}
 	}
 }

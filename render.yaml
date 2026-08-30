@@ -1,0 +1,46 @@
+# Render Blueprint — deploys the InBridge Go backend (auth, citizen profiles,
+# service applications). The AI chat runs separately on Vercel and needs none of
+# this.
+#
+# Data residency: this service is stateless. All persistent user data lives in
+# Supabase (Mumbai / ap-south-1) and Upstash Redis (Mumbai) — both set via the
+# DATABASE_URL / REDIS_URL secrets below. Render's closest region to India is
+# Singapore; the compute transits there but stores nothing.
+#
+# Deploy: Render Dashboard → New → Blueprint → pick the anvidev01/inbridge repo.
+# Then fill the `sync: false` secrets in the dashboard (they are never committed).
+services:
+  - type: web
+    name: inbridge-api
+    runtime: docker
+    repo: https://github.com/anvidev01/inbridge
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    region: singapore
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      # ── Secrets — set these in the Render dashboard, not in git ──
+      - key: DATABASE_URL          # Supabase (Mumbai) — Session pooler connection string
+        sync: false
+      - key: REDIS_URL             # Upstash (Mumbai) — rediss://... TLS URL
+        sync: false
+      - key: JWT_PRIVATE_KEY       # RSA private key PEM (see deploy guide)
+        sync: false
+      - key: JWT_PUBLIC_KEY        # RSA public key PEM
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://inbridge.in,https://www.inbridge.in"
+      # ── Optional integrations (login works WITHOUT these now; set them
+      #    only when you wire the real UIDAI / DigiLocker / PM-Kisan features) ──
+      # - key: UIDAI_API_URL
+      #   sync: false
+      # - key: DIGILOCKER_CLIENT_ID
+      #   sync: false
+      # - key: DIGILOCKER_CLIENT_SECRET
+      #   sync: false
+      # - key: PM_KISAN_API_KEY
+      #   sync: false
