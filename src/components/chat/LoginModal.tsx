@@ -29,11 +29,34 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                 ? { full_name: name, email, password, vid: `VID-${Math.random().toString(36).slice(2, 9).toUpperCase()}`, date_of_birth: "1990-01-01", gender: "Other", state: "Delhi", district: "New Delhi" }
                 : { email, password };
 
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
+            // The backend runs on a free-tier host that hibernates when idle: the
+            // first request after a spin-down can take ~50s, and its edge can
+            // return a transient 404/502/503 before the instance is routable.
+            // Retry those so a healthy backend isn't reported as "Load failed".
+            const postWithRetry = async (): Promise<Response> => {
+                const RETRYABLE = new Set([404, 502, 503, 504]);
+                let lastErr: unknown = null;
+                for (let attempt = 0; attempt < 4; attempt++) {
+                    try {
+                        const res = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body),
+                        });
+                        // A real auth response (200, 400, 401, 409) is final.
+                        // Only infra-level statuses are worth retrying.
+                        if (!RETRYABLE.has(res.status)) return res;
+                        lastErr = new Error(`transient ${res.status}`);
+                    } catch (e) {
+                        lastErr = e; // network error (offline, cold-start abort)
+                    }
+                    // brief backoff to let the instance finish waking
+                    await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+                }
+                throw lastErr ?? new Error('The server is waking up. Please try again in a moment.');
+            };
+
+            const response = await postWithRetry();
 
             let data: any = {};
             const text = await response.text();
@@ -60,7 +83,11 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
             onLogin(data.citizen?.full_name || name || email.split('@')[0]);
             onClose();
         } catch (err: any) {
-            setError(err.message);
+            const msg = String(err?.message || '');
+            const friendly = /load failed|failed to fetch|networkerror|transient/i.test(msg)
+                ? 'Could not reach the server (it may be waking up). Please try again in a few seconds.'
+                : msg;
+            setError(friendly);
         } finally {
             setLoading(false);
         }
