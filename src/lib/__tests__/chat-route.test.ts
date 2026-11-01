@@ -98,6 +98,8 @@ describe('POST /api/chat', () => {
 
         assert.equal(types[0], 'start');
         assert.equal(typeof chunks[0].messageMetadata.createdAt, 'number');
+        assert.equal(chunks[0].messageMetadata.mode, 'default');
+        assert.equal(chunks[0].messageMetadata.language, 'en');
         assert.deepEqual(
             types.filter((t) => t !== 'text-delta'),
             ['start', 'phase:searching-dataset', 'phase:reading', 'data-sources', 'data-provenance', 'phase:writing',
@@ -124,6 +126,9 @@ describe('POST /api/chat', () => {
         const sent = groqRequests[0];
         assert.equal(sent.temperature, 0.2);
         assert.match(sent.messages[0].content, /\[1\] /);
+        // Default model is a qwen3 reasoning model: thinking off and hidden.
+        assert.equal(sent.reasoning_format, 'hidden');
+        assert.equal(sent.reasoning_effort, 'none');
     });
 
     test('falls back to fixed follow-ups when the model omits them', async () => {
@@ -150,9 +155,12 @@ describe('POST /api/chat', () => {
 
     test('grievance mode masks PII instead of blocking, and skips retrieval', async () => {
         groqChunks = ['Please tell me the department.'];
-        const res = await post(ask('My pension stopped, my phone is 9876543210', { mode: 'grievance' }));
+        const res = await post(ask('My pension stopped, my phone is 9876543210', { mode: 'grievance', language: 'hi' }));
         assert.equal(res.status, 200);
         const chunks = await chunksOf(res);
+        assert.equal(chunks[0].type, 'start');
+        assert.equal(chunks[0].messageMetadata.mode, 'grievance');
+        assert.equal(chunks[0].messageMetadata.language, 'hi');
         assert.ok(!chunks.some((c) => c.type === 'data-phase' && c.data.phase === 'searching-dataset'));
         assert.equal(chunks.find((c) => c.type === 'data-provenance').data.source, 'llm_direct');
         const sent = JSON.stringify(groqRequests[0]);

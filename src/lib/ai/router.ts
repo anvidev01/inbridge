@@ -36,21 +36,57 @@ export interface RouterDeps {
     providers: Record<LLMProvider, ProviderStream>;
     buildChain: (requested?: LLMProvider) => LLMProvider[];
     availableProviders: () => Promise<LLMProvider[] | null>;
-    /** Time allowed for a provider's first token before failing over. */
+    /**
+     * Most time any one provider gets for its first token before failing
+     * over. The real limit per attempt is the smaller of this and the time
+     * left before RouteOptions.firstTokenDeadline.
+     */
     firstTokenTimeoutMs: number;
+}
+
+/** Default per-provider first-token cap. Override with LLM_FIRST_TOKEN_TIMEOUT_MS. */
+export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 10_000;
+
+function envTimeout(): number {
+    const n = Number(process.env.LLM_FIRST_TOKEN_TIMEOUT_MS);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_FIRST_TOKEN_TIMEOUT_MS;
 }
 
 const DEFAULT_DEPS: RouterDeps = {
     providers: { anthropic: streamAnthropic, gemini: streamGemini, groq: streamGroq },
     buildChain: (requested) => buildChain(requested),
     availableProviders,
-    // Three providers x 15s still fits inside the route's 60s maxDuration.
-    firstTokenTimeoutMs: Number(process.env.LLM_FIRST_TOKEN_TIMEOUT_MS || 15000),
+    // A per-provider cap only. Retrieval runs before the router and is not
+    // covered by it; the route passes firstTokenDeadline so retrieval time
+    // plus every failover attempt still leaves room to generate the answer
+    // inside the function's maxDuration.
+    firstTokenTimeoutMs: envTimeout(),
 };
 
 export interface RouteOptions {
     requestedProvider?: LLMProvider;
     telemetry?: TelemetryBatch;
+    /**
+     * Epoch ms by which some provider must have produced its first token.
+     * Each attempt gets min(firstTokenTimeoutMs, time left); once the deadline
+     * has passed no further provider is tried. Build it with firstTokenDeadline.
+     */
+    firstTokenDeadline?: number;
+}
+
+/**
+ * Deadline for the first token: route start + the function's maxDuration,
+ * minus the time reserved for generating the rest of the answer after the
+ * first token arrives.
+ */
+export function firstTokenDeadline(routeStartedAt: number, maxDurationMs: number, generationReserveMs: number): number {
+    return routeStartedAt + maxDurationMs - generationReserveMs;
+}
+
+/** Time the next attempt may wait for its first token: min(cap, time left), never negative. */
+export function attemptTimeoutMs(capMs: number, deadline: number | undefined, now: number): number {
+    if (deadline === undefined) return capMs;
+    return Math.max(0, Math.min(capMs, deadline - now));
 }
 
 export interface RoutedStream {
@@ -91,6 +127,14 @@ export async function routeChatStream(
         const provider = chain[i];
         const started = Date.now();
 
+        const timeoutMs = attemptTimeoutMs(deps.firstTokenTimeoutMs, options.firstTokenDeadline, started);
+        if (timeoutMs <= 0) {
+            log.warn('First-token deadline passed; not trying further providers', {
+                skipped: chain.slice(i),
+            });
+            break;
+        }
+
         // One controller per attempt, so a first-token timeout can cancel this
         // provider's request without cancelling the user's whole request.
         const controller = new AbortController();
@@ -108,7 +152,7 @@ export async function routeChatStream(
                 timer = setTimeout(() => {
                     controller.abort();
                     reject(new FirstTokenTimeout());
-                }, deps.firstTokenTimeoutMs);
+                }, timeoutMs);
             });
             const first = await Promise.race([probeFirstText(iterator, stripper), timeout]);
             clearTimeout(timer);

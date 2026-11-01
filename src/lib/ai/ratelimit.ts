@@ -5,6 +5,10 @@
  * own map and a cold start resets it, so this caps bursts from one client but
  * is not a global quota.
  *
+ * Retention: a key (the client IP) is kept only for its current window.
+ * Expired keys are evicted on requests and by an unref'd background timer,
+ * at most SWEEP_INTERVAL_MS after the window ends. Nothing is persisted.
+ *
  * TODO(upstash): when UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are
  * set, use @upstash/ratelimit (sliding window) for a limit shared across
  * instances, and keep this as the fallback. Not done here because it needs
@@ -25,21 +29,41 @@ export interface RateLimitResult {
     reset: number;
 }
 
-const WINDOW_MS = 60 * 1000;
-/** Expired entries are swept at most this often. */
-const SWEEP_INTERVAL_MS = 60 * 1000;
+/** Length of one rate-limit window. Exported so tests and docs agree on it. */
+export const WINDOW_MS = 60 * 1000;
+/**
+ * Expired entries are swept at least this often, both on incoming requests
+ * and by a background timer, so an IP is held for at most WINDOW_MS +
+ * SWEEP_INTERVAL_MS after its first request in a window, even when no
+ * further traffic arrives.
+ */
+export const SWEEP_INTERVAL_MS = 10 * 1000;
 /** Hard cap so a flood of distinct keys cannot grow the map without bound. */
 const MAX_TRACKED_KEYS = 10_000;
 
 const rateLimits = new Map<string, RateLimitTracker>();
 let lastSweep = 0;
+let sweepTimer: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * Deletes every entry whose window has ended. Returns how many were removed.
+ * Exported for tests.
+ */
+export function evictExpired(now: number = Date.now()): number {
+    lastSweep = now;
+    let removed = 0;
+    for (const [key, record] of rateLimits) {
+        if (now >= record.resetAt) {
+            rateLimits.delete(key);
+            removed++;
+        }
+    }
+    if (rateLimits.size === 0) stopSweepTimer();
+    return removed;
+}
 
 function sweep(now: number): void {
-    if (now - lastSweep < SWEEP_INTERVAL_MS && rateLimits.size < MAX_TRACKED_KEYS) return;
-    lastSweep = now;
-    for (const [key, record] of rateLimits) {
-        if (now > record.resetAt) rateLimits.delete(key);
-    }
+    if (now - lastSweep >= SWEEP_INTERVAL_MS || rateLimits.size >= MAX_TRACKED_KEYS) evictExpired(now);
     // Still over the cap: drop the oldest insertions (Map iterates in insertion order).
     if (rateLimits.size >= MAX_TRACKED_KEYS) {
         let excess = rateLimits.size - MAX_TRACKED_KEYS + 1;
@@ -48,6 +72,27 @@ function sweep(now: number): void {
             rateLimits.delete(key);
         }
     }
+}
+
+/**
+ * Runs evictExpired in the background while anything is tracked. unref()
+ * keeps the timer from holding a Node process (or a test run) open.
+ */
+function ensureSweepTimer(): void {
+    if (sweepTimer) return;
+    sweepTimer = setInterval(() => evictExpired(), SWEEP_INTERVAL_MS);
+    (sweepTimer as { unref?: () => void }).unref?.();
+}
+
+function stopSweepTimer(): void {
+    if (!sweepTimer) return;
+    clearInterval(sweepTimer);
+    sweepTimer = undefined;
+}
+
+/** True while the background sweep is scheduled. Exported for tests. */
+export function sweepTimerActive(): boolean {
+    return sweepTimer !== undefined;
 }
 
 /**
@@ -60,9 +105,12 @@ export async function checkRateLimit(key: string, limit?: number): Promise<RateL
     sweep(now);
 
     let record = rateLimits.get(key);
-    if (!record || now > record.resetAt) {
+    if (!record || now >= record.resetAt) {
+        // Re-insert so Map order stays oldest-first for the cap eviction.
+        rateLimits.delete(key);
         record = { count: 1, resetAt: now + WINDOW_MS };
         rateLimits.set(key, record);
+        ensureSweepTimer();
         return { success: true, limit: max, remaining: max - 1, reset: record.resetAt };
     }
 
@@ -96,4 +144,5 @@ export function trackedKeyCount(): number {
 export function resetRateLimits(): void {
     rateLimits.clear();
     lastSweep = 0;
+    stopSweepTimer();
 }

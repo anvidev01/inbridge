@@ -83,10 +83,13 @@ const PAN_PATTERN = /\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b/gi;
 
 // ── Phone ─────────────────────────────────────────────────────────────────
 
-// Indian mobile: 10 digits starting 6-9, optionally written 5+5, optionally
-// prefixed by +91, 91 or 0. The leading group stops a match starting inside a
-// longer digit run (no lookbehind: the TS target is ES2017).
-const PHONE_PATTERN = /(^|[^\d+])((?:\+?91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5})(?!\d)/g;
+// Indian mobile: 10 digits starting 6-9. Either prefixed by +91, 91 or 0 (and
+// then optionally written 5+5 with a space or hyphen), or a bare unbroken run
+// of 10 digits. A bare 5+5 split is NOT treated as a phone number: income and
+// amount ranges such as "60000-90000" or "75000 80000" look exactly like it.
+// The leading group stops a match starting inside a longer digit run (no
+// lookbehind: the TS target is ES2017).
+const PHONE_PATTERN = /(^|[^\d+])((?:\+?91[\s-]?|0)[6-9]\d{4}[\s-]?\d{5}|[6-9]\d{9})(?!\d)/g;
 
 // ── Injection ─────────────────────────────────────────────────────────────
 
@@ -98,7 +101,10 @@ const INJECTION_PATTERNS: RegExp[] = [
     /\b(ignore|disregard|forget)\s+everything\s+(you\s+(were|have\s+been)\s+told|above|before)\b/i,
     // "reveal your system prompt", "print the hidden instructions"
     /\b(reveal|show|print|repeat|display|output|leak|dump|tell\s+me)\s+(me\s+)?(your|the)\s+(system|hidden|initial|original|secret)\s+(prompt|instructions?|message|rules)\b/i,
-    /\bsystem\s+prompt\b/i,
+    // "give me the system prompt", "what is your system prompt". A bare
+    // "what is a system prompt" is a harmless question and passes.
+    /\b(reveal|show|print|repeat|give|send|share|display|output|leak|dump|copy|paste|tell\s+me)\b.{0,20}\bsystem\s+prompt\b/i,
+    /\byour\s+(system|hidden|initial|original|secret)\s+(prompt|instructions)\b/i,
     // "bypass your safety rules", but not "heart bypass surgery" or "bypass road"
     /\bbypass\s+(your|the|all|any)\s+(safety|guardrails?|filters?|restrictions?|rules|instructions?|content\s+polic(y|ies))\b/i,
     /\bjail\s?break(s|ing|ed)?\b/i,

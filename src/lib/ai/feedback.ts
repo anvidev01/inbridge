@@ -10,8 +10,10 @@
 import {
     FEEDBACK_NOTE_MAX,
     FEEDBACK_REASONS,
+    isLanguage,
     type FeedbackBody,
     type FeedbackReason,
+    type Language,
     type RetrievalSource,
 } from '../chat/protocol';
 import { maskPII } from '../guardrails';
@@ -86,4 +88,38 @@ export function parseFeedbackBody(raw: unknown): FeedbackParseResult {
     }
 
     return { ok: true, value };
+}
+
+/**
+ * Language for /api/feedback error messages. The body is strict (no extra
+ * fields), so the client signals it with ?lang=en|hi|hinglish, validated with
+ * isLanguage. Without it, the highest-weighted Accept-Language tag the UI
+ * supports is used ("hi-Latn" reads as Hinglish). Defaults to English.
+ */
+export function feedbackLanguage(url: string, acceptLanguage: string | null): Language {
+    let fromQuery: string | null = null;
+    try {
+        fromQuery = new URL(url).searchParams.get('lang');
+    } catch {
+        // Relative or malformed URL: no query hint.
+    }
+    if (isLanguage(fromQuery)) return fromQuery;
+
+    if (acceptLanguage) {
+        const tags = acceptLanguage
+            .split(',')
+            .map((part) => {
+                const [tag, ...params] = part.trim().toLowerCase().split(';');
+                const q = params.map((p) => /^\s*q=([\d.]+)\s*$/.exec(p)?.[1]).find(Boolean);
+                return { tag: tag.trim(), q: q === undefined ? 1 : Number(q) };
+            })
+            .filter((t) => t.tag && t.q > 0)
+            .sort((a, b) => b.q - a.q);
+        for (const { tag } of tags) {
+            if (tag === 'hinglish' || tag.startsWith('hi-latn')) return 'hinglish';
+            if (tag === 'hi' || tag.startsWith('hi-')) return 'hi';
+            if (tag === 'en' || tag.startsWith('en-')) return 'en';
+        }
+    }
+    return 'en';
 }
