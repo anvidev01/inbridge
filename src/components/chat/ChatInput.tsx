@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { ArrowUp, ChevronDown, ListFilter, MessageSquareWarning, Mic, ShieldAlert, Square, X } from 'lucide-react';
-import { FOCUS_CATEGORIES, LANGUAGES, isFocus, type ChatMode, type Focus, type Language } from '@/lib/chat/protocol';
+import { ArrowUp, MessageSquareWarning, Mic, ShieldAlert, Square, X } from 'lucide-react';
+import { FOCUS_CATEGORIES, LANGUAGES, type ChatMode, type Language } from '@/lib/chat/protocol';
 import { DISCLAIMER } from '@/lib/site';
 import { findPii, maskPii, type PiiKind } from '@/lib/pii-client';
 
@@ -229,14 +229,12 @@ interface ChatInputProps {
     /** Request in flight (submitted or streaming): Send becomes Stop. */
     busy: boolean;
     language: Language;
-    focus: Focus;
-    onFocusChange: (focus: Focus) => void;
     mode: ChatMode;
     onModeChange: (mode: ChatMode) => void;
     textareaRef: React.RefObject<HTMLTextAreaElement>;
 }
 
-export function ChatInput({ value, onChange, onSend, onStop, busy, language, focus, onFocusChange, mode, onModeChange, textareaRef }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSend, onStop, busy, language, mode, onModeChange, textareaRef }: ChatInputProps) {
     const copy = COPY[language];
     const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
     const [isListening, setIsListening] = useState(false);
@@ -335,8 +333,6 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
         }
     };
 
-    const focusLabels = FOCUS_LABELS[language];
-    const focusLabel = focus === 'all' ? copy.topic : focusLabels[focus];
 
     return (
         <div className="w-full flex flex-col gap-2">
@@ -367,41 +363,6 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                 />
 
                 <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
-                    {/*
-                      Topic filter: one pill. A native select covers the label part (so the
-                      menu is the platform's own); once a topic is chosen, its clear button
-                      sits inside the same pill.
-                    */}
-                    <div className={`inline-flex items-center h-11 rounded-full min-w-0 text-sm transition-colors duration-150
-                        has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2 has-[select:focus-visible]:outline-accent
-                        ${focus === 'all' ? 'border border-line text-muted hover:text-fg hover:bg-surface-2' : 'bg-surface-2 text-fg'}`}>
-                        <span className={`relative inline-flex items-center gap-1.5 h-full min-w-0 pl-3 ${focus === 'all' ? 'pr-2.5' : 'pr-1'}`}>
-                            <ListFilter className={`w-4 h-4 shrink-0 ${focus === 'all' ? '' : 'text-accent'}`} aria-hidden="true" />
-                            <span className="min-w-0 truncate max-w-[9rem]" aria-hidden="true">{focusLabel}</span>
-                            {focus === 'all' && <ChevronDown className="w-4 h-4 shrink-0" aria-hidden="true" />}
-                            <select
-                                value={focus}
-                                onChange={(e) => { if (isFocus(e.target.value)) onFocusChange(e.target.value); }}
-                                aria-label={copy.topic}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base bg-surface text-fg outline-none!"
-                            >
-                                <option value="all">{copy.allTopics}</option>
-                                {FOCUS_CATEGORIES.map((c) => <option key={c} value={c}>{focusLabels[c]}</option>)}
-                            </select>
-                        </span>
-                        {focus !== 'all' && (
-                            <button
-                                type="button"
-                                onClick={() => onFocusChange('all')}
-                                aria-label={copy.clearTopic}
-                                title={copy.clearTopic}
-                                className={`${press} shrink-0 inline-flex items-center justify-center w-10 h-11 rounded-full text-muted hover:text-fg hover:bg-surface`}
-                            >
-                                <X className="w-4 h-4" aria-hidden="true" />
-                            </button>
-                        )}
-                    </div>
-
                     {mode === 'grievance' ? (
                         <span className="inline-flex items-center h-11 pl-3 rounded-full bg-surface-2 text-fg text-sm min-w-0">
                             <MessageSquareWarning className="w-4 h-4 shrink-0 mr-1.5 text-accent" aria-hidden="true" />

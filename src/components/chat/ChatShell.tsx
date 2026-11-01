@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useSearchParams } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { ArrowUpLeft, Menu, SquarePen } from 'lucide-react';
+import { Menu, SquarePen } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LogoMark } from '@/components/site/Logo';
 import { ChatWindow } from './ChatWindow';
@@ -31,6 +31,15 @@ const MAX_PREFILL = 500;
 interface StatusCopy { busy: string; ready: string; stopped: string }
 
 /** How the last request made in this session ended, for the sr-only status line. */
+
+/**
+ * Display only: a non-breaking hyphen keeps scheme names like PM-KISAN and
+ * PM-JAY on one line at 390px. The query sent to the model keeps the plain hyphen.
+ */
+function keepNamesWhole(text: string): string {
+    return text.replace(/\b(PM|NSP)-(?=[A-Z])/g, '$1\u2011');
+}
+
 export type Outcome = 'none' | 'ready' | 'stopped';
 
 /**
@@ -142,7 +151,9 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
     const [input, setInput] = useState(initialQuery.slice(0, MAX_PREFILL));
     const [language, setLanguage] = useLanguagePreference();
     const [mode, setMode] = useState<ChatMode>(initialMode);
-    const [focus, setFocus] = useState<Focus>('all');
+    // Retrieval works out the topic from the question itself, so the composer
+    // has no topic picker; the server still accepts an optional focus filter.
+    const focus: Focus = 'all';
     const [phase, setPhase] = useState<PhaseData | null>(null);
     const [session, setSession] = useState<Session>(() => ({ id: newThreadId(), initial: [] }));
     const [outcome, setOutcome] = useState<Outcome>('none');
@@ -418,6 +429,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                         </div>
                     ) : (
                         <ChatWindow
+                            key={session.id}
                             messages={messages}
                             status={status}
                             phase={phase}
@@ -447,8 +459,6 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                                 onStop={() => void stop()}
                                 busy={busy}
                                 language={language}
-                                focus={focus}
-                                onFocusChange={setFocus}
                                 mode={mode}
                                 onModeChange={setMode}
                                 textareaRef={textareaRef}
@@ -470,11 +480,9 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                                                     className="group w-full min-h-11 flex items-start gap-3 text-left rounded-lg px-3 py-3 hover:bg-surface active:bg-surface-2 transition-colors duration-150"
                                                 >
                                                     <span className="flex-1 min-w-0">
-                                                        <span className="block text-base leading-snug text-fg">{s.query}</span>
-                                                        <span className="block mt-1 text-sm text-muted">{s.context}</span>
+                                                        <span className="block text-base leading-snug text-fg">{keepNamesWhole(s.query)}</span>
+                                                        <span className="block mt-1 text-sm text-muted">{keepNamesWhole(s.context)}</span>
                                                     </span>
-                                                    {/* Fills the composer above; nothing is sent until the user presses Send. */}
-                                                    <ArrowUpLeft className="w-4 h-4 mt-1 shrink-0 text-muted transition-transform duration-150 motion-safe:group-hover:-translate-x-0.5 motion-safe:group-hover:-translate-y-0.5 group-hover:text-fg" aria-hidden="true" />
                                                 </button>
                                             </li>
                                         ))}

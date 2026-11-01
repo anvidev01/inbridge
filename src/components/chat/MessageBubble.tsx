@@ -44,17 +44,20 @@ export interface MessageBubbleProps {
     onFollowUp: (text: string) => void;
     /** Regenerate the last answer. */
     onRegenerate: () => void;
+    /** Animate the entrance (only for messages added after the transcript mounted). Default true. */
+    animateIn?: boolean;
 }
 
 const HIGHLIGHT_MS = 2000;
 const EMPTY_SOURCES: Citation[] = [];
 
-export function MessageBubble({ message, isLast, isStreaming, phase, language, mode, onFollowUp, onRegenerate }: MessageBubbleProps) {
+export function MessageBubble({ message, isLast, isStreaming, phase, language, mode, onFollowUp, onRegenerate, animateIn = true }: MessageBubbleProps) {
     const rawText = messageText(message);
+    const enter = animateIn ? 'animate-[page-enter_240ms_cubic-bezier(0.22,1,0.36,1)_both]' : '';
 
     if (message.role === 'user') {
         return (
-            <div className="mt-10 mb-2 w-full animate-[page-enter_240ms_cubic-bezier(0.22,1,0.36,1)_both]">
+            <div className={`mt-10 mb-2 w-full ${enter}`}>
                 {/* The question reads big (answer-engine layout) but is not a heading. */}
                 <p className="font-serif text-xl font-medium leading-snug text-fg whitespace-pre-wrap break-words wrap-anywhere sm:text-2xl">
                     {rawText}
@@ -74,11 +77,13 @@ export function MessageBubble({ message, isLast, isStreaming, phase, language, m
             mode={mode}
             onFollowUp={onFollowUp}
             onRegenerate={onRegenerate}
+            animateIn={animateIn}
         />
     );
 }
 
-function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, language: uiLanguage, mode: uiMode, onFollowUp, onRegenerate }: MessageBubbleProps & { rawText: string }) {
+function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, language: uiLanguage, mode: uiMode, onFollowUp, onRegenerate, animateIn = true }: MessageBubbleProps & { rawText: string }) {
+    const enter = animateIn ? 'animate-[page-enter_240ms_cubic-bezier(0.22,1,0.36,1)_both]' : '';
     // Labels, lang and the complaint hand-off follow the mode/language the
     // answer was generated in (metadata), not the current UI toggles.
     const { mode, language } = answerContext(message, { mode: uiMode, language: uiLanguage });
@@ -127,7 +132,7 @@ function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, languag
     const citationHosts = useMemo(() => [...new Set(sources.map((s) => s.host).filter(Boolean))], [sources]);
 
     return (
-        <article lang={lang.htmlLang} aria-label={t.answer} className="mb-10 flex w-full flex-col animate-[page-enter_240ms_cubic-bezier(0.22,1,0.36,1)_both]">
+        <article lang={lang.htmlLang} aria-label={t.answer} className={`mb-10 flex w-full flex-col ${enter}`}>
             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted">
                 <MessageSquareText size={16} aria-hidden="true" />
                 {t.answer}

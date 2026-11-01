@@ -35,9 +35,10 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
             title={`Switch to ${next} theme`}
             className={`relative inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.94] focus-visible:rounded-full! ${className}`}
         >
-            {/* Both icons stay mounted and cross-fade with a quarter turn; reduced motion makes it instant. */}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${icon} ${theme === 'dark' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-75'}`}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${icon} ${theme === 'light' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 rotate-90 scale-75'}`}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
+            {/* Both icons stay mounted and cross-fade with a quarter turn. Which one shows is read from
+                html[data-theme] (set before first paint), so nothing animates on page load. */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${icon} opacity-100 rotate-0 scale-100 [[data-theme=light]_&]:opacity-0 [[data-theme=light]_&]:-rotate-90 [[data-theme=light]_&]:scale-75`}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`${icon} opacity-0 rotate-90 scale-75 [[data-theme=light]_&]:opacity-100 [[data-theme=light]_&]:rotate-0 [[data-theme=light]_&]:scale-100`}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
         </button>
     );
 }

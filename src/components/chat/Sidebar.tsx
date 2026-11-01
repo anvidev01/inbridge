@@ -193,7 +193,7 @@ export function Sidebar({
                         <Link href="/" aria-label="InBridge" className="block w-fit py-1 text-fg rounded-md hover:opacity-80 transition-opacity">
                             <Logo />
                         </Link>
-                        <span className="block text-[13px] text-muted leading-snug mt-1.5">{copy.tagline}</span>
+                        <span className="block text-[13px] text-muted leading-snug mt-1.5 text-balance">{copy.tagline}</span>
                     </div>
                     <button
                         ref={closeRef}

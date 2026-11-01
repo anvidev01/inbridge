@@ -118,9 +118,12 @@ export class FollowupSplitter {
  * not stop every model from using them. Each run of dashes (written EM below)
  * is rewritten from what is around it:
  *   "word EM word"   -> "word, word"
- *   "a list EM" at the end of a line -> "a list:"
+ *   "a list EM" at the end of a line -> "a list:" when a list follows, else "."
  *   "EM item" at the start of a line -> "- item" (a markdown bullet)
  *   "2024 EN 25" with no spaces -> "2024-25" (a range keeps a hyphen)
+ *   "18 EN 40", "Rs 6,000 EM Rs 12,000" (spaced, between figures) -> "18 to 40"
+ *   "January EN March" (an unspaced en dash) -> "January-March"
+ *   "> EM quote" after a blockquote marker -> "> quote"
  *   "| EM |" in a table -> "| - |"
  *   next to other punctuation ("word, EM next", "word EM.") the dash is dropped.
  * Hyphens are never touched, so "PM-KISAN", "2024-25" and the follow-ups
@@ -145,16 +148,31 @@ export function rewriteDashes(text: string, prev = '\n'): string {
         const lineStart = before === '\n' || before === '';
         const lineEnd = after === '\n' || after === '\r' || after === '';
 
-        // A range between figures keeps a hyphen (2024 EN 25 becomes 2024-25).
-        if (!lead && !trail && /\d/.test(before) && /\d/.test(after)) return '-';
+        const enDashOnly = !match.includes('\u2014');
+        // A range between figures keeps a hyphen (2024 EN 25 becomes 2024-25);
+        // spaced, it reads as "to" so amounts and ages keep their meaning.
+        if (/\d/.test(before) && (/\d/.test(after) || /^(Rs\.?|₹|INR)/.test(text.slice(afterIdx)))) {
+            return !lead && !trail ? '-' : ' to ';
+        }
+        // An unspaced en dash between words is a range too ("January-March").
+        if (enDashOnly && !lead && !trail && /\w/.test(before) && /\w/.test(after)) return '-';
         // "EM item" at the start of a line was meant as a bullet.
         if (lineStart) return lineEnd ? lead : `${lead}- `;
+        // "> EM quote": drop the dash after a markdown quote marker.
+        if (before === '>') return lead;
         // An empty table cell or a dash next to a pipe.
         if (before === '|' || after === '|') return `${lead}-${trail}`;
         if (PUNCT_BEFORE.test(before)) return lineEnd ? '' : ' ';
         if (before === '(' || PUNCT_AFTER.test(after)) return '';
-        // A dash closing a line introduces what follows (usually a list).
-        if (lineEnd) return ':';
+        // A dash closing a line introduces what follows when a list follows;
+        // at the end of the reply or before prose it just ends the sentence.
+        if (lineEnd) {
+            if (after === '') return '';
+            const next = text.slice(afterIdx).replace(/^\s*\n/, '').split('\n').find((l) => l.trim() !== '');
+            // A chunk can end inside the marker ("-" or "1"), so a bare marker counts.
+            if (next === undefined || /^\s*([-*\u2022\u2013\u2014]|\d+[.)]?)(\s|$)/.test(next)) return ':';
+            return '.';
+        }
         return ', ';
     });
 }

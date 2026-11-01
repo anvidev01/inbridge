@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { ChatStatus } from 'ai';
 import { ArrowDown } from 'lucide-react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
@@ -86,6 +86,9 @@ export function ChatWindow({ messages, status, phase, language, mode, onFollowUp
     // Before the first assistant chunk arrives there is no assistant message to
     // carry the phase line, so show a single pending row instead.
     const pending = busy && last?.role !== 'assistant';
+    // Messages already present when the transcript mounted (an opened saved
+    // thread) appear at once; only messages added afterwards animate in.
+    const [mountedIds] = useState(() => new Set(messages.map((m) => m.id)));
 
     return (
         <StickToBottom className="relative flex-1 min-h-0" resize="smooth" initial="instant">
@@ -110,6 +113,7 @@ export function ChatWindow({ messages, status, phase, language, mode, onFollowUp
                             mode={mode}
                             onFollowUp={onFollowUp}
                             onRegenerate={onRegenerate}
+                            animateIn={!mountedIds.has(m.id)}
                         />
                     );
                 })}

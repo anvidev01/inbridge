@@ -221,6 +221,23 @@ describe('DashRewriter', () => {
     });
 
     test('a dash at the very end of the stream is not left dangling', () => {
-        assert.equal(runDashes([`Check the portal ${EM}`]), 'Check the portal:');
+        assert.equal(runDashes([`Check the portal ${EM}`]), 'Check the portal');
+    });
+
+    test('spaced ranges between figures keep their meaning', () => {
+        assert.equal(rewriteDashes(`Age 18 ${EN} 40 years`), 'Age 18 to 40 years');
+        assert.equal(rewriteDashes(`Rs 6,000 ${EN} Rs 12,000 a year`), 'Rs 6,000 to Rs 12,000 a year');
+        assert.equal(rewriteDashes(`₹500 ${EM} ₹2,000`), '₹500 to ₹2,000');
+        assert.equal(rewriteDashes(`January${EN}March`), 'January-March');
+    });
+
+    test('a line-ending dash becomes a colon only before a list', () => {
+        assert.equal(rewriteDashes(`You need ${EM}\n- Aadhaar`), 'You need:\n- Aadhaar');
+        assert.equal(rewriteDashes(`You need ${EM}\n1. Aadhaar`), 'You need:\n1. Aadhaar');
+        assert.equal(rewriteDashes(`That is all ${EM}\nThen apply online.`), 'That is all.\nThen apply online.');
+    });
+
+    test('a dash after a blockquote marker is dropped', () => {
+        assert.equal(rewriteDashes(`> ${EM} as the portal says`), '> as the portal says');
     });
 });
