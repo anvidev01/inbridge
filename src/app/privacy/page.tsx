@@ -23,13 +23,14 @@ export default function PrivacyPage() {
         <InfoPage
             title="Your data on InBridge"
             updated={UPDATED}
+            masthead="lead"
+            quiet
             photos={['post-office', 'bridge-crowd', 'farmer', 'station']}
             intro={
                 <p>
-                    This is the InBridge privacy notice. InBridge is an independent AI assistant for Indian government
-                    schemes, and you can use it without an account. This notice lists everything we handle, why, and
-                    who else processes it. InBridge is built with DPDP Act 2023 (Digital Personal Data Protection Act)
-                    requirements in mind.
+                    You can use InBridge without an account. This notice lists everything we handle, why, and who else
+                    processes it. It is built with DPDP Act 2023 (Digital Personal Data Protection Act) requirements in
+                    mind.
                 </p>
             }
         >

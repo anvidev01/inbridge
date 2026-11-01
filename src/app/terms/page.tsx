@@ -21,11 +21,13 @@ export default function TermsPage() {
         <InfoPage
             title="Using InBridge"
             updated={UPDATED}
+            masthead="lead"
+            quiet
             photos={['bridge-crowd', 'village-school', 'station', 'farmer']}
             intro={
                 <p>
-                    These are the terms of use. By using InBridge you agree to them. They are written to be read, so
-                    please do.
+                    By using InBridge you agree to these terms. They are short and written to be read: what InBridge is
+                    for, what it is not, and what you can expect from it.
                 </p>
             }
         >

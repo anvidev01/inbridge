@@ -14,6 +14,7 @@ import Image from 'next/image';
 import { SiteHeader } from './SiteHeader';
 import { SiteFooter } from './SiteFooter';
 import { Reveal } from './Reveal';
+import { LogoMark } from './Logo';
 import { PHOTOS, type PhotoKey } from '@/lib/photos';
 
 /** One pair of page margins for every inner page. */
@@ -48,7 +49,7 @@ const revealStyle = (i: number) => ({ '--reveal-i': i }) as CSSProperties;
 
 type Cell =
     | { kind: 'photo'; slot: 0 | 1 | 2 | 3; className: string }
-    | { kind: 'tile'; tone: string; className: string };
+    | { kind: 'tile'; tone: 'accent' | 'ink' | 'step'; mark?: boolean; className: string };
 
 /**
  * "mosaic": six columns by two rows on tablet and up (four photographs, four
@@ -56,13 +57,13 @@ type Cell =
  */
 const MOSAIC: Cell[] = [
     { kind: 'photo', slot: 0, className: 'col-span-2 col-start-1 row-start-1' },
-    { kind: 'tile', tone: 'bg-accent', className: 'col-start-3 row-span-2 row-start-1' },
+    { kind: 'tile', tone: 'accent', mark: true, className: 'col-start-3 row-span-2 row-start-1' },
     { kind: 'photo', slot: 1, className: 'col-start-2 row-start-2 sm:col-start-4 sm:row-start-1' },
-    { kind: 'tile', tone: 'bg-surface', className: 'col-start-1 row-start-2' },
-    { kind: 'tile', tone: 'bg-surface-2', className: 'hidden sm:block sm:col-start-5 sm:row-start-1' },
+    { kind: 'tile', tone: 'ink', className: 'col-start-1 row-start-2' },
+    { kind: 'tile', tone: 'step', className: 'hidden sm:block sm:col-start-5 sm:row-start-1' },
     { kind: 'photo', slot: 2, className: 'hidden sm:block sm:col-start-6 sm:row-span-2 sm:row-start-1' },
     { kind: 'photo', slot: 3, className: 'hidden sm:block sm:col-start-2 sm:row-start-2' },
-    { kind: 'tile', tone: 'bg-surface-2', className: 'hidden sm:block sm:col-span-2 sm:col-start-4 sm:row-start-2' },
+    { kind: 'tile', tone: 'step', className: 'hidden sm:block sm:col-span-2 sm:col-start-4 sm:row-start-2' },
 ];
 
 /**
@@ -72,7 +73,7 @@ const MOSAIC: Cell[] = [
  */
 const LEAD: Cell[] = [
     { kind: 'photo', slot: 0, className: 'col-span-2 row-span-2 col-start-1 row-start-1 sm:col-span-4' },
-    { kind: 'tile', tone: 'bg-accent', className: 'col-start-3 row-start-1 sm:col-start-6' },
+    { kind: 'tile', tone: 'accent', mark: true, className: 'col-start-3 row-start-1 sm:col-start-6' },
     { kind: 'photo', slot: 1, className: 'col-start-3 row-start-2 sm:col-start-5 sm:row-start-1' },
     { kind: 'photo', slot: 2, className: 'hidden sm:block sm:col-start-5 sm:row-start-2' },
     { kind: 'photo', slot: 3, className: 'hidden sm:block sm:col-start-6 sm:row-start-2' },
@@ -89,17 +90,24 @@ export type MastheadPhotos = readonly [PhotoKey, PhotoKey, PhotoKey, PhotoKey];
  * A gutterless band of photographs and flat colour across the top of the page.
  * The photographs show public life in India; credit them with <PhotoCredits/>.
  */
-export function Masthead({ photos, variant = 'mosaic' }: { photos: MastheadPhotos; variant?: 'mosaic' | 'lead' }) {
+export function Masthead({ photos, variant = 'mosaic', quiet = false }: { photos: MastheadPhotos; variant?: 'mosaic' | 'lead'; quiet?: boolean }) {
     const cells = variant === 'lead' ? LEAD : MOSAIC;
+    // Flat tiles are solid print blocks: green ink carrying the mark, full ink,
+    // and a tone step. "quiet" (legal pages) keeps the green for the one action.
+    const tone = { accent: quiet ? 'bg-fg text-bg' : 'bg-accent text-accent-fg', ink: 'bg-fg', step: 'bg-surface-2' } as const;
     return (
         <div className={`grid grid-cols-3 grid-rows-2 sm:grid-cols-6 ${BAND_HEIGHT[variant]}`}>
             {cells.map((cell, i) => {
                 if (cell.kind === 'tile') {
-                    return <div key={i} aria-hidden="true" data-reveal style={revealStyle(i)} className={`${cell.tone} ${cell.className}`} />;
+                    return (
+                        <div key={i} aria-hidden="true" className={`${tone[cell.tone]} ${cell.className} flex items-end p-4 sm:p-5`}>
+                            {cell.mark && <LogoMark size={40} className="[&_circle]:fill-current" />}
+                        </div>
+                    );
                 }
                 const photo = PHOTOS[photos[cell.slot]];
                 return (
-                    <div key={i} data-reveal style={revealStyle(i)} className={`relative overflow-hidden bg-surface ${cell.className}`}>
+                    <div key={i} className={`relative overflow-hidden bg-surface ${cell.className}`}>
                         <Image
                             src={photo.src}
                             alt={photo.alt}
@@ -176,7 +184,7 @@ export function InfoSection({ id, title, children }: { id: string; title: string
  */
 export function InfoBand({ children }: { children: ReactNode }) {
     return (
-        <div className="-mx-5 sm:-mx-8 lg:-mx-12 mt-20 sm:mt-28 bg-surface px-5 sm:px-8 lg:px-12 pb-20 sm:pb-24 pt-1 [&_code]:bg-bg">
+        <div className="-mx-5 sm:-mx-8 lg:-mx-12 mt-20 sm:mt-28 bg-surface [[data-theme=light]_&]:bg-surface-2 px-5 sm:px-8 lg:px-12 pb-20 sm:pb-24 pt-1 [&_code]:bg-bg">
             {children}
         </div>
     );
@@ -188,6 +196,8 @@ export function InfoPage({
     updated,
     current,
     photos,
+    masthead = 'mosaic',
+    quiet = false,
     children,
 }: {
     title: string;
@@ -198,6 +208,9 @@ export function InfoPage({
     current?: 'about';
     /** Four photographs for the masthead, the first shown largest. */
     photos: MastheadPhotos;
+    /** Masthead variant; legal pages use 'lead' with a quiet (no green) tile. */
+    masthead?: 'mosaic' | 'lead';
+    quiet?: boolean;
     /** <InfoSection/> blocks. */
     children: ReactNode;
 }) {
@@ -206,7 +219,7 @@ export function InfoPage({
             <SiteHeader current={current} />
             <Reveal />
             <main id="main-content">
-                <Masthead photos={photos} />
+                <Masthead photos={photos} variant={masthead} quiet={quiet} />
                 <div className={PAGE_X}>
                     <header className={`${AXIS} pt-12 sm:pt-16 lg:pt-24`}>
                         <div className="lg:col-start-2 lg:row-start-1">

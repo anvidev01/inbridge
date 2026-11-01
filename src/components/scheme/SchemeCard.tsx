@@ -76,7 +76,7 @@ export function SchemeCard({
             )}
 
             <div className="mt-2 flex flex-wrap gap-x-7">
-                <Link href={askHref(`Tell me about ${scheme.name}`)} className={`${LINK} text-accent decoration-accent`}>
+                <Link href={askHref(`Tell me about ${scheme.name}`)} className={`${LINK} text-fg decoration-accent hover:text-accent`}>
                     Ask InBridge about it
                 </Link>
                 {scheme.source && (

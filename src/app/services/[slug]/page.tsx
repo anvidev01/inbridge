@@ -78,11 +78,9 @@ function mastheadPhotos(scheme: Scheme): MastheadPhotos {
     return [lead, a, b, c];
 }
 
-/** Long names step down a size so the title still holds to two lines. */
+/** Long names step down to the heading size so the title still holds to two lines (no extra type step). */
 function titleSize(name: string): string {
-    if (name.length <= 26) return TYPE.display;
-    if (name.length <= 64) return 'text-[length:clamp(1.75rem,0.5rem_+_3.3vw,3.5rem)] leading-[1.05] tracking-[-0.025em]';
-    return TYPE.head;
+    return name.length <= 26 ? TYPE.display : TYPE.head;
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
