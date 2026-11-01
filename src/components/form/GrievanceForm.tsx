@@ -3,7 +3,7 @@
 import { useState } from "react";
 import FormField from "./FormField";
 import Stepper from "./Stepper";
-import { submitApplication } from "@/app/actions";
+import { submitApplication } from "@/lib/submit-application";
 
 export default function GrievanceForm() {
     const [step, setStep] = useState(1);
