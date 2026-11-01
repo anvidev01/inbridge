@@ -19,17 +19,29 @@ const nextConfig: NextConfig = {
       "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/**",
     ],
   },
-  // Keep the function well under Vercel's 250 MB limit: Vercel runs linux/x64,
-  // so drop onnxruntime binaries for every other platform and any GPU providers.
+  // Keep the function well under Vercel's 250 MB limit. Vercel runs
+  // linux/x64. onnxruntime's binding.js requires its binary through a
+  // process.platform template, so the tracer pulls in EVERY platform's
+  // binaries (~210 MB) unless they are excluded. The "**/" patterns also catch
+  // nested copies: a stale Vercel build cache once still held
+  // @xenova/transformers with its own onnxruntime-node and pushed the
+  // function to 467 MB.
   outputFileTracingExcludes: {
     "/api/chat": [
-      "./node_modules/onnxruntime-node/bin/napi-v3/darwin/**",
-      "./node_modules/onnxruntime-node/bin/napi-v3/win32/**",
-      "./node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**",
-      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda*",
-      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_tensorrt*",
-      "./node_modules/onnxruntime-web/**",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/darwin/**",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/win32/**",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/arm64/**",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda*",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_tensorrt*",
+      "./node_modules/**/onnxruntime-web/**",
+      "./node_modules/@xenova/**",
+      "./node_modules/tesseract.js*/**",
       "./node_modules/faiss-node/**",
+      // sharp is only imported by transformers.js for image pipelines, which we never run.
+      "./node_modules/**/@img/sharp-libvips-darwin*/**",
+      "./node_modules/**/@img/sharp-libvips-linuxmusl*/**",
+      "./node_modules/**/@img/sharp-linuxmusl*/**",
+      "./node_modules/**/@img/sharp-win32*/**",
     ],
   },
 };
