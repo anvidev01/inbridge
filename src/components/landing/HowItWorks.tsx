@@ -60,8 +60,8 @@ function SourceResult({ scheme }: { scheme: Scheme }) {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    aria-label={`Source 1: myscheme.gov.in, ${scheme.name} (opens in a new tab)`}
-                    className="relative mx-1 inline-flex translate-y-[-1px] items-center gap-1 rounded-full border border-line bg-surface-2 px-1.5 py-px align-baseline text-[0.75rem] font-medium leading-5 text-muted no-underline transition-colors hover:border-accent hover:text-fg"
+                    aria-label={`Example citation chip, numbered within its answer: myscheme.gov.in, ${scheme.name} (opens in a new tab)`}
+                    className="relative mx-1 inline-flex translate-y-[-1px] items-center gap-1 rounded-full border border-line bg-surface-2 px-1.5 py-px align-baseline text-[13px] font-medium leading-5 text-muted no-underline transition-colors hover:border-accent hover:text-fg"
                 >
                     <span className="tabular-nums text-fg">1</span>
                     <span>myscheme.gov.in</span>
@@ -76,8 +76,8 @@ function SourceResult({ scheme }: { scheme: Scheme }) {
                     className="flex min-h-[84px] w-full max-w-[300px] flex-col justify-between rounded-lg border border-line bg-bg p-3 transition-colors hover:border-accent"
                 >
                     <span className="line-clamp-2 text-[13px] font-medium leading-snug text-fg">{scheme.name}</span>
-                    <span className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted">
-                        <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded bg-surface-2 px-1 text-[10px] font-semibold tabular-nums">1</span>
+                    <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
+                        <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded bg-surface-2 px-1 text-[13px] font-semibold tabular-nums">1</span>
                         <span className="truncate">myscheme.gov.in</span>
                         <span className="ml-auto shrink-0 font-semibold text-official" title="Government domain (.gov.in / .nic.in)">Official</span>
                     </span>

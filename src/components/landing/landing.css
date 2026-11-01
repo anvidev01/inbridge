@@ -5,12 +5,14 @@
 /* ---- Footnote markers ------------------------------------- */
 .lp-ref {
   font-family: var(--font-sans);
-  font-size: 0.875rem;
-  font-weight: 500;
+  /* Scales with the text it sits in, like a printed superscript, but never
+     below the 13px floor. */
+  font-size: max(13px, 0.68em);
+  font-weight: 600;
   line-height: 0;
-  margin-left: 0.1em;
   vertical-align: super;
   letter-spacing: 0;
+  font-feature-settings: 'tnum';
 }
 
 .lp-ref a {

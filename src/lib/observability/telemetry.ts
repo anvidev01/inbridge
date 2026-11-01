@@ -100,7 +100,7 @@ export class TelemetryBatch {
         if (!url || !token) {
             if (!disabledWarningLogged) {
                 disabledWarningLogged = true;
-                log.warn('Telemetry disabled — set INTERNAL_METRICS_URL (or NEXT_PUBLIC_API_URL) and INTERNAL_API_TOKEN', {
+                log.warn('Telemetry disabled: set INTERNAL_METRICS_URL (or NEXT_PUBLIC_API_URL) and INTERNAL_API_TOKEN', {
                     has_url: Boolean(url),
                     has_token: Boolean(token),
                 });

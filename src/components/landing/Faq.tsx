@@ -46,9 +46,9 @@ export function Faq({ total, datasetLabel }: { total: number; datasetLabel: stri
             a: (
                 <>
                     English, <span lang="hi">हिन्दी</span> and Hinglish, which is Hindi typed in Latin letters. You
-                    pick the reply language in the chat, and you can speak your question where your browser supports
-                    it
-                    <Ref to="code" />.
+                    pick the reply language in the chat
+                    <Ref to="search" />, and you can speak your question where your browser supports it
+                    <Ref to="privacy" />.
                 </>
             ),
         },
@@ -67,8 +67,9 @@ export function Faq({ total, datasetLabel }: { total: number; datasetLabel: stri
             a: (
                 <>
                     Not by InBridge. Your history stays in your browser, on your device. Messages go to an AI provider
-                    to write the answer and are not saved in a database; search results may stay in server memory for
-                    up to 15 minutes
+                    to write the answer, and sometimes a search query goes to a search provider limited to .gov.in and
+                    .nic.in sites; neither is saved in a database. Search results may stay in server memory for up to
+                    15 minutes
                     <Ref to="privacy" />.
                 </>
             ),

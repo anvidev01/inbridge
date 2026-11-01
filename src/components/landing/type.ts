@@ -9,7 +9,7 @@ export const T = {
     /** Figure: the headline number and the footer wordmark. */
     xl: 'font-serif font-medium text-[clamp(5rem,15vw,15rem)] leading-[0.82] tracking-[-0.05em]',
     /** Display: the page title and the split showcase heading. */
-    d: 'font-serif font-medium text-[clamp(2.375rem,6.4vw,6.5rem)] leading-[0.95] tracking-[-0.04em]',
+    d: 'font-serif font-medium text-[clamp(2.75rem,8vw,8rem)] leading-[0.92] tracking-[-0.045em]',
     /** Heading: section headings, FAQ questions, the stats claim. */
     h: 'font-serif font-medium text-[clamp(1.5rem,2.3vw,2.125rem)] leading-[1.12] tracking-[-0.02em]',
     /** Lead: the standfirst, the order sentences, names in the proof columns. */

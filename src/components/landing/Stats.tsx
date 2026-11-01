@@ -66,11 +66,7 @@ export function Stats({ total, categories }: { total: number; categories: Filter
                                             <span className="block text-[20px] font-medium tabular-nums leading-tight">{n(c.count)}</span>
                                             <span className="block text-[14px] text-muted">{shortLabel(c.label)}</span>
                                         </span>
-                                    ) : (
-                                        <span className="lp-bar-value px-1 text-[14px] tabular-nums text-muted transition-opacity" aria-hidden="true">
-                                            {n(c.count)}
-                                        </span>
-                                    )}
+                                    ) : null}
                                     <span className="lp-bar-tip text-[14px] leading-snug" aria-hidden="true">
                                         <span className="block font-medium">{c.label}</span>
                                         <span className="block tabular-nums">{n(c.count)} schemes</span>

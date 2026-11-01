@@ -18,7 +18,7 @@ function errorResponse(code: ChatErrorCode, status: number, language: Language):
 }
 
 /**
- * POST /api/feedback — thumbs up/down on an answer. Body: FeedbackBody
+ * POST /api/feedback: thumbs up/down on an answer. Body: FeedbackBody
  * (src/lib/chat/protocol.ts). Answers 204.
  *
  * There is no database reachable from this app yet, so each vote is written

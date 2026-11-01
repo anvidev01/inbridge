@@ -39,7 +39,9 @@ const LINK =
     'inline-flex min-h-11 items-center text-fg underline decoration-transparent decoration-[0.07em] underline-offset-[0.22em] transition-[text-decoration-color] duration-200 hover:decoration-current';
 
 export function SiteFooter({ credits = [], wide = false }: SiteFooterProps) {
-    const frame = wide ? 'px-5 md:px-8' : 'mx-auto max-w-6xl px-4 sm:px-6';
+    // Same outer margins as the page content (PAGE_X in InfoPage.tsx / the landing
+    // page's own), so header, content and footer share one pair of edges.
+    const frame = wide ? 'px-5 md:px-8' : 'px-5 sm:px-8 lg:px-12';
     const photos = [...new Set(credits)].map((key) => PHOTOS[key]);
 
     return (

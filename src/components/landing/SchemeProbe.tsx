@@ -145,7 +145,7 @@ export function SchemeProbe({ initialText, initial, datasetTotal }: { initialTex
                                     </Link>
                                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
                                         <span>{s.issuer}</span>
-                                        <span className="rounded bg-surface-2 px-1.5 text-[12px] font-medium text-fg">{s.level}</span>
+                                        <span className="rounded bg-surface-2 px-1.5 text-[13px] font-medium text-fg">{s.level}</span>
                                         {s.source && (
                                             <a href={s.source} target="_blank" rel="noopener noreferrer" className="text-official underline-offset-2 hover:underline">
                                                 myscheme.gov.in

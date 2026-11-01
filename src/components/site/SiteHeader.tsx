@@ -19,14 +19,17 @@ const NAV: { key: NavKey; href: string; label: string; short: string }[] = [
 interface SiteHeaderProps {
     current?: NavKey;
     /**
-     * Full-width bar on the page margins (the landing page). By default the
-     * bar sits in the same max-w-6xl column as the info pages' content.
+     * The landing page's margins (its hero already carries the filled
+     * "Ask InBridge" button, so here the action is a text link). By default
+     * the bar uses the info pages' margins and a filled action.
      */
     wide?: boolean;
 }
 
 export function SiteHeader({ current, wide = false }: SiteHeaderProps) {
-    const frame = wide ? 'px-5 md:px-8' : 'mx-auto max-w-6xl px-4 sm:px-6';
+    // Same outer margins as the page content (PAGE_X in InfoPage.tsx / the landing
+    // page's own), so header, content and footer share one pair of edges.
+    const frame = wide ? 'px-5 md:px-8' : 'px-5 sm:px-8 lg:px-12';
     return (
         <header>
             <div className={`${frame} flex h-16 md:h-[4.5rem] items-center justify-between gap-2`}>
@@ -56,7 +59,9 @@ export function SiteHeader({ current, wide = false }: SiteHeaderProps) {
                     <ThemeToggle className="ml-1" />
                     <Link
                         href="/chat"
-                        className="ml-3 hidden md:inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-[1.0625rem] font-medium text-accent-fg transition-[transform,opacity] duration-150 ease-out hover:opacity-90 active:scale-[0.97]"
+                        className={wide
+                            ? 'ml-2 hidden md:inline-flex min-h-11 items-center px-3 text-[1.0625rem] font-medium text-accent underline-offset-[0.3em] decoration-[0.07em] hover:underline'
+                            : 'ml-3 hidden md:inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-[1.0625rem] font-medium text-accent-fg transition-[transform,opacity] duration-150 ease-out hover:opacity-90 active:scale-[0.97]'}
                     >
                         Ask InBridge
                     </Link>

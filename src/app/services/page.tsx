@@ -16,6 +16,7 @@ import { AXIS, BUTTON, Masthead, PAGE_X, PhotoCredits, TYPE, type MastheadPhotos
 import { SchemeCard } from '@/components/scheme/SchemeCard';
 import { SchemeFilters } from '@/components/scheme/SchemeFilters';
 import { Pagination } from '@/components/scheme/Pagination';
+import { extractState } from '@/components/landing/scheme-query';
 import {
     DATASET_LABEL,
     DATASET_MONTH,
@@ -57,7 +58,16 @@ function describeFilters(f: Filters): string {
 
 export default async function ServicesPage({ searchParams }: PageProps) {
     const options = getFilterOptions();
-    const { filters, page } = parseSchemeFilters(await searchParams, options);
+    const parsed = parseSchemeFilters(await searchParams, options);
+    const { page } = parsed;
+    // "scholarship for girls in Bihar" typed into a search box: read the state
+    // out of the text, as the landing page's live search does, so both run the
+    // same query (and the no-JS form lands on the same results).
+    let filters = parsed.filters;
+    if (filters.q && !filters.state) {
+        const found = extractState(filters.q, options.states.map((st) => st.value));
+        if (found.state) filters = { ...filters, q: found.q || undefined, state: found.state };
+    }
     const result = getSchemes(filters, page);
     const stats = getStats();
     const n = (v: number) => v.toLocaleString('en-IN');

@@ -29,9 +29,9 @@ export const SOURCES = {
     },
     search: {
         n: 2,
-        title: 'How InBridge works: live search of government websites',
+        title: 'How InBridge works',
         url: '/about',
-        note: 'Live search is limited to .gov.in and .nic.in websites. Each result is checked again on the server and pages from other domains are dropped before the AI model reads them.',
+        note: 'Live search is limited to .gov.in and .nic.in websites, and each result is checked again on the server before the AI model reads it. The same page states that InBridge is not affiliated with, endorsed by or run on behalf of any government body, and that it answers in English, Hindi and Hinglish.',
         external: false,
     },
     pmkisan: {

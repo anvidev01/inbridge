@@ -1,7 +1,8 @@
 /**
  * "Plain names in columns": the official websites InBridge answers link to,
- * grouped by kind. They are sites it cites, not partners; none of them has
- * endorsed InBridge.
+ * grouped by kind. The portals are ones that came back as cited sources in
+ * live answers during testing (1 November 2026). They are sites it cites, not
+ * partners; none of them has endorsed InBridge.
  */
 import { Ref } from './Ref';
 import { MARGIN, T } from './type';
@@ -12,14 +13,14 @@ const GROUPS: { kind: string; names: { label: string; href?: string }[] }[] = [
         names: [{ label: 'myscheme.gov.in', href: 'https://www.myscheme.gov.in/' }],
     },
     {
-        kind: 'Portals answers cite',
+        kind: 'Portals answers have cited',
         names: [
             { label: 'uidai.gov.in', href: 'https://uidai.gov.in/' },
             { label: 'scholarships.gov.in', href: 'https://scholarships.gov.in/' },
-            { label: 'pmkisan.gov.in', href: 'https://pmkisan.gov.in/' },
             { label: 'pib.gov.in', href: 'https://pib.gov.in/' },
             { label: 'umang.gov.in', href: 'https://web.umang.gov.in/' },
-            { label: 'india.gov.in', href: 'https://www.india.gov.in/' },
+            { label: 'scholarship.odisha.gov.in', href: 'https://scholarship.odisha.gov.in/' },
+            { label: 'dag.gujarat.gov.in', href: 'https://dag.gujarat.gov.in/' },
         ],
     },
     {
@@ -47,8 +48,9 @@ export function Proof() {
             </div>
             <div className="mt-14 md:mt-0 md:col-span-8 md:col-start-5 columns-2 lg:columns-4 gap-x-8" data-reveal style={{ ['--reveal-i' as string]: 2 }}>
                 {GROUPS.map((g, i) => (
-                    <ul key={g.kind} className={`text-[1.0625rem] md:text-[1.25rem] leading-[1.5] break-inside-avoid ${i > 0 ? 'mt-8 lg:mt-0 lg:break-before-column' : ''}`}>
-                        <li className="text-muted">{g.kind}</li>
+                    <div key={g.kind} className={`text-[1.0625rem] md:text-[1.25rem] leading-[1.5] break-inside-avoid ${i > 0 ? 'mt-8 lg:mt-0 lg:break-before-column' : ''}`}>
+                        <p id={`proof-kind-${i}`} className="text-muted">{g.kind}</p>
+                        <ul aria-labelledby={`proof-kind-${i}`}>
                         {g.names.map((name) => (
                             <li key={name.label} className="text-fg">
                                 {name.href ? (
@@ -66,7 +68,8 @@ export function Proof() {
                                 )}
                             </li>
                         ))}
-                    </ul>
+                        </ul>
+                    </div>
                 ))}
             </div>
         </section>
