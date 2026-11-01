@@ -1,191 +1,427 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
+import { Menu, SquarePen } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { ChatWindow } from './ChatWindow';
 import { ChatInput } from './ChatInput';
-import { Sidebar, ChatHistoryItem } from './Sidebar';
+import { Sidebar, inertProps, useIsDesktop } from './Sidebar';
 import { LoginModal } from './LoginModal';
+import { ErrorCard, needsEdit, parseChatError } from './ErrorCard';
+import { LanguageSelect, useLanguagePreference } from './LanguageSelect';
+import { Onboarding } from './Onboarding';
+import {
+    LANGUAGES, isChatMode, messageText,
+    type ChatMode, type ChatRequestExtras, type Focus, type InBridgeUIMessage, type Language, type PhaseData,
+} from '@/lib/chat/protocol';
+import {
+    clearStoredThreads, deleteStoredThread, getServerThreadsSnapshot, getThreadsSnapshot, newThreadId,
+    renameStoredThread, saveThread, subscribeThreads, type Thread,
+} from '@/lib/history';
 
-export function ChatShell() {
+/** Auth is hidden unless explicitly enabled; the backend's data stores are not reliably up. */
+const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === 'true';
+const SIDEBAR_ID = 'inbridge-sidebar';
+const MAX_PREFILL = 500;
+
+const COPY: Record<Language, {
+    heading: string;
+    sub: string;
+    headingGrievance: string;
+    subGrievance: string;
+    newThread: string;
+    openMenu: string;
+    starters: { title: string; query: string }[];
+    status: { busy: string; ready: string; error: string };
+}> = {
+    en: {
+        heading: 'Ask about government schemes and services',
+        sub: 'In English, हिन्दी or Hinglish, with links to official sources where available.',
+        headingGrievance: 'Draft a complaint',
+        subGrievance: 'Describe what went wrong. InBridge helps you write a clear complaint that you can file yourself on pgportal.gov.in.',
+        newThread: 'New thread',
+        openMenu: 'Open menu',
+        starters: [
+            { title: 'PM-KISAN installment', query: 'How do I check the status of my PM-KISAN installment?' },
+            { title: 'Scholarship on NSP', query: 'How do I apply for a scholarship on the National Scholarship Portal?' },
+            { title: 'Aadhaar address update', query: 'How do I update the address on my Aadhaar card online?' },
+            { title: 'Ayushman card', query: 'How do I get an Ayushman card and check if my family is eligible?' },
+        ],
+        status: { busy: 'InBridge is preparing an answer.', ready: 'Answer ready.', error: 'The answer could not be completed.' },
+    },
+    hi: {
+        heading: 'सरकारी योजनाओं और सेवाओं के बारे में पूछें',
+        sub: 'English, हिन्दी या Hinglish में — जहाँ उपलब्ध हों, आधिकारिक स्रोतों के लिंक के साथ।',
+        headingGrievance: 'शिकायत लिखें',
+        subGrievance: 'बताइए क्या गलत हुआ। InBridge एक साफ़ शिकायत लिखने में मदद करता है, जिसे आप खुद pgportal.gov.in पर दर्ज कर सकते हैं।',
+        newThread: 'नई बातचीत',
+        openMenu: 'मेन्यू खोलें',
+        starters: [
+            { title: 'PM-KISAN किस्त', query: 'मैं अपनी PM-KISAN किस्त का स्टेटस कैसे देखूँ?' },
+            { title: 'NSP पर छात्रवृत्ति', query: 'राष्ट्रीय छात्रवृत्ति पोर्टल (NSP) पर छात्रवृत्ति के लिए आवेदन कैसे करें?' },
+            { title: 'आधार में पता बदलना', query: 'आधार कार्ड में पता ऑनलाइन कैसे बदलें?' },
+            { title: 'आयुष्मान कार्ड', query: 'आयुष्मान कार्ड कैसे बनवाएँ और कैसे जाँचें कि मेरा परिवार पात्र है या नहीं?' },
+        ],
+        status: { busy: 'InBridge उत्तर तैयार कर रहा है।', ready: 'उत्तर तैयार है।', error: 'उत्तर पूरा नहीं हो सका।' },
+    },
+    hinglish: {
+        heading: 'Sarkari schemes aur services ke baare mein poochhein',
+        sub: 'English, हिन्दी ya Hinglish mein — jahan available ho, official sources ke links ke saath.',
+        headingGrievance: 'Complaint likhein',
+        subGrievance: 'Bataiye kya galat hua. InBridge ek saaf complaint likhne mein madad karta hai, jise aap khud pgportal.gov.in par file kar sakte hain.',
+        newThread: 'Naya thread',
+        openMenu: 'Menu kholein',
+        starters: [
+            { title: 'PM-KISAN installment', query: 'PM-KISAN installment ka status kaise check karein?' },
+            { title: 'NSP par scholarship', query: 'National Scholarship Portal par scholarship ke liye apply kaise karein?' },
+            { title: 'Aadhaar address update', query: 'Aadhaar card mein address online kaise update karein?' },
+            { title: 'Ayushman card', query: 'Ayushman card kaise banwayein aur kaise check karein ki meri family eligible hai?' },
+        ],
+        status: { busy: 'InBridge answer taiyaar kar raha hai.', ready: 'Answer taiyaar hai.', error: 'Answer poora nahi ho saka.' },
+    },
+};
+
+/** One useChat session per thread; changing `id` gives useChat a fresh, isolated Chat instance. */
+interface Session {
+    id: string;
+    initial: InBridgeUIMessage[];
+}
+
+interface ChatShellProps {
+    /** From ?q= : fills the composer, never auto-sends. */
+    initialQuery?: string;
+    /** From ?mode=grievance */
+    initialMode?: ChatMode;
+}
+
+export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatShellProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [user, setUser] = useState<string | null>(null);
     const [loginOpen, setLoginOpen] = useState(false);
-    const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-    const [inputValue, setInputValue] = useState('');
-    const [language, setLanguage] = useState<'en' | 'hi' | 'hinglish'>('en');
+    const [input, setInput] = useState(initialQuery.slice(0, MAX_PREFILL));
+    const [language, setLanguage] = useLanguagePreference();
+    const [mode, setMode] = useState<ChatMode>(initialMode);
+    const [focus, setFocus] = useState<Focus>('all');
+    const [phase, setPhase] = useState<PhaseData | null>(null);
+    const [session, setSession] = useState<Session>(() => ({ id: newThreadId(), initial: [] }));
 
-    const GREETINGS = [
-        'Hi mate! How should I help you?',
-        'नमस्ते। आपकी कैसे सहायता करूं?',
-        'Namaste. Aapki kaise madad karu?',
-    ];
-    const [greetingIndex, setGreetingIndex] = useState(0);
-    const [greetingVisible, setGreetingVisible] = useState(true);
+    const threads = useSyncExternalStore(subscribeThreads, getThreadsSnapshot, getServerThreadsSnapshot);
+    const isDesktop = useIsDesktop();
+    const copy = COPY[language];
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setGreetingVisible(false);
-            setTimeout(() => {
-                setGreetingIndex(prev => (prev + 1) % GREETINGS.length);
-                setGreetingVisible(true);
-            }, 400);
-        }, 3000);
-        return () => clearInterval(interval);
-    }, []);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
 
-    const LANG_INSTRUCTIONS: Record<string, string> = {
-        en: 'You MUST always reply in English only, no matter what language the user writes in. Never switch to Hindi or any other language.',
-        hi: 'आपको हमेशा केवल हिंदी में जवाब देना है, चाहे उपयोगकर्ता किसी भी भाषा में लिखे। अंग्रेज़ी या किसी भी अन्य भाषा का प्रयोग बिल्कुल न करें।',
-        hinglish: 'You MUST always reply in Hinglish — a natural mix of Hindi and English in the same sentences, the way young urban Indians speak — no matter what language the user writes in. Example: "Aadhaar card ke liye aapko UIDAI portal pe jaana hoga aur apni details submit karni padegi." Never reply in pure English or pure Hindi only.',
-    };
+    // Thread the in-flight request belongs to; null means "ignore its onFinish/onData"
+    // (set when the user leaves a thread mid-answer).
+    const requestThreadRef = useRef<string | null>(null);
 
-    // langRef always holds the CURRENT language so the fetch closure never goes stale
-    const langRef = useRef(language);
-    useEffect(() => { langRef.current = language; }, [language]);
+    const [transport] = useState(() => new DefaultChatTransport<InBridgeUIMessage>({ api: '/api/chat' }));
 
-    // Transport created once; custom fetch reads langRef.current on every send
-    const transportRef = useRef(new DefaultChatTransport({
-        api: '/api/chat',
-        fetch: (url: RequestInfo | URL, init?: RequestInit) => {
-            const body = JSON.parse((init?.body as string) ?? '{}');
-            body.languageInstruction = LANG_INSTRUCTIONS[langRef.current];
-            return globalThis.fetch(url, { ...init, body: JSON.stringify(body) });
+    // {language, mode, focus} go in each request's body (merged by the transport),
+    // built from current state at call time: never stale, and changing them never
+    // remounts or resets the chat. Every send/regenerate goes through this.
+    const extras = useMemo<ChatRequestExtras>(() => ({ language, mode, focus }), [language, mode, focus]);
+
+    const { messages, sendMessage, regenerate, stop, status, error, clearError, setMessages } = useChat<InBridgeUIMessage>({
+        id: session.id,
+        messages: session.initial,
+        transport,
+        onData: (part) => {
+            if (part.type === 'data-phase' && requestThreadRef.current) setPhase(part.data);
         },
-    }));
-
-    const { messages, sendMessage, status, setMessages } = useChat({
-        transport: transportRef.current,
+        onError: (err) => {
+            setPhase(null);
+            // The message itself was rejected: take it back into the composer so it can be edited.
+            if (needsEdit(parseChatError(err).kind)) {
+                setMessages((prev) => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg?.role !== 'user') return prev;
+                    const text = messageText(lastMsg);
+                    setInput((current) => current.trim() ? current : text);
+                    return prev.slice(0, -1);
+                });
+            }
+        },
+        onFinish: ({ messages: finished }) => {
+            setPhase(null);
+            const threadId = requestThreadRef.current;
+            requestThreadRef.current = null;
+            if (threadId && finished.length > 0) saveThread(threadId, finished);
+        },
     });
 
+    const busy = status === 'submitted' || status === 'streaming';
+    const empty = messages.length === 0;
+
+    // <html lang> follows the answer language.
     useEffect(() => {
-        const storedUser = localStorage.getItem('inbridge_user');
-        if (storedUser) {
-            try {
-                const parsed = JSON.parse(storedUser);
-                setUser(parsed.name);
-            } catch (e) {
-                localStorage.removeItem('inbridge_user');
-                localStorage.removeItem('inbridge_token');
-            }
+        document.documentElement.lang = LANGUAGES.find((l) => l.code === language)?.htmlLang ?? 'en-IN';
+    }, [language]);
+
+    // Restore a previous login (only when auth is enabled).
+    useEffect(() => {
+        if (!AUTH_ENABLED) return;
+        try {
+            const stored = localStorage.getItem('inbridge_user');
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a stored login after mount
+            if (stored) setUser(JSON.parse(stored).name ?? null);
+        } catch {
+            localStorage.removeItem('inbridge_user');
+            localStorage.removeItem('inbridge_token');
         }
     }, []);
 
-    const handleLogin = (name: string) => {
-        setUser(name);
-    };
+    const focusComposer = useCallback(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+    }, []);
 
-    const handleLogout = () => {
-        setUser(null);
-        localStorage.removeItem('inbridge_user');
-        localStorage.removeItem('inbridge_token');
-    };
+    /** Leave the current thread. A partial answer is saved before its stream is stopped. */
+    const leaveThread = useCallback(() => {
+        if (busy) {
+            const threadId = requestThreadRef.current;
+            requestThreadRef.current = null;
+            if (threadId && messages.length > 0) saveThread(threadId, messages);
+            void stop();
+        }
+        setPhase(null);
+        clearError();
+    }, [busy, messages, stop, clearError]);
 
-    const isStreaming = status === 'streaming' || status === 'submitted';
+    const startNewThread = useCallback(() => {
+        leaveThread();
+        setSession({ id: newThreadId(), initial: [] });
+        setMode('default');
+        // The draft in the composer is kept on purpose.
+        requestAnimationFrame(focusComposer);
+    }, [leaveThread, focusComposer]);
 
-    // Build chat history from user messages sent so far
-    const chatHistory = useMemo(() => {
-        return messages
-            .filter(m => m.role === 'user')
-            .map((m, i) => ({
-                id: String(i),
-                title: (m.parts?.find((p: any) => p.type === 'text') as any)?.text?.slice(0, 60) ?? 'Message',
-                updatedAt: new Date(),
-            }));
-    }, [messages]);
+    const openThread = useCallback((thread: Thread) => {
+        if (thread.id === session.id) return;
+        leaveThread();
+        setSession({ id: thread.id, initial: thread.messages });
+    }, [leaveThread, session.id]);
 
-    const handleSend = async (text: string) => {
-        if (!text.trim() || isStreaming) return;
-        setInputValue('');
-        await sendMessage({ role: 'user', parts: [{ type: 'text', text }] });
-    };
+    const handleDeleteThread = useCallback((id: string) => {
+        deleteStoredThread(id);
+        if (id === session.id) startNewThread();
+    }, [session.id, startNewThread]);
 
-    const handleSuggestionClick = (suggestion: string) => {
-        handleSend(suggestion);
-    };
+    const handleClearThreads = useCallback(() => {
+        clearStoredThreads();
+        startNewThread();
+    }, [startNewThread]);
+
+    const send = useCallback((text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed || busy) return;
+        requestThreadRef.current = session.id;
+        setPhase(null);
+        setInput('');
+        void sendMessage({ text: trimmed }, { body: extras });
+    }, [busy, session.id, sendMessage, extras]);
+
+    const handleRegenerate = useCallback(() => {
+        if (busy) return;
+        requestThreadRef.current = session.id;
+        setPhase(null);
+        void regenerate({ body: extras });
+    }, [busy, session.id, regenerate, extras]);
+
+    const fillComposer = useCallback((query: string) => {
+        setInput(query);
+        requestAnimationFrame(focusComposer);
+    }, [focusComposer]);
+
+    const draftComplaint = useCallback(() => {
+        setMode('grievance');
+        requestAnimationFrame(focusComposer);
+    }, [focusComposer]);
+
+    const closeSidebar = useCallback(() => {
+        setSidebarOpen(false);
+        // Return focus to the control that opened the drawer.
+        if (!window.matchMedia('(min-width: 1024px)').matches) requestAnimationFrame(() => menuButtonRef.current?.focus());
+    }, []);
+
+    // Global keys: Esc stops an answer, Ctrl/Cmd+Shift+O starts a new thread.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'o') {
+                e.preventDefault();
+                startNewThread();
+                return;
+            }
+            if (e.key === 'Escape' && busy && !e.defaultPrevented && !sidebarOpen && !loginOpen) {
+                void stop();
+            }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [busy, sidebarOpen, loginOpen, startNewThread, stop]);
+
+    // One polite announcement per state change, instead of a live region on the whole log.
+    let statusText = '';
+    if (busy) statusText = copy.status.busy;
+    else if (status === 'error') statusText = copy.status.error;
+    else if (!empty && messages[messages.length - 1].role === 'assistant') statusText = copy.status.ready;
+
+    const drawerOpenOnMobile = sidebarOpen && !isDesktop;
 
     return (
-        <div className="flex h-screen w-full bg-[#0a0a0a] overflow-hidden font-sans">
+        <div className="flex h-dvh w-full bg-bg text-fg overflow-hidden">
             <Sidebar
+                id={SIDEBAR_ID}
                 isOpen={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                history={chatHistory}
-                currentChatId={currentChatId}
-                onSelectChat={setCurrentChatId}
-                onNewChat={() => {
-                    setMessages([]);
-                    setCurrentChatId(null);
-                }}
-                onDeleteChat={() => { }}
-                onServiceClick={(msg) => {
-                    setSidebarOpen(false);
-                    handleSend(msg);
-                }}
+                onClose={closeSidebar}
+                threads={threads}
+                currentThreadId={session.id}
+                onSelectThread={openThread}
+                onRenameThread={renameStoredThread}
+                onDeleteThread={handleDeleteThread}
+                onClearThreads={handleClearThreads}
+                onNewThread={startNewThread}
+                onStarter={fillComposer}
+                onDraftComplaint={draftComplaint}
+                authEnabled={AUTH_ENABLED}
                 user={user}
                 onOpenLogin={() => setLoginOpen(true)}
-                onLogout={handleLogout}
+                onLogout={() => {
+                    setUser(null);
+                    localStorage.removeItem('inbridge_user');
+                    localStorage.removeItem('inbridge_token');
+                }}
             />
 
-            <LoginModal
-                isOpen={loginOpen}
-                onClose={() => setLoginOpen(false)}
-                onLogin={handleLogin}
-            />
+            {AUTH_ENABLED && (
+                <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(false)} onLogin={setUser} />
+            )}
 
-            <div key={language} className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a] h-full relative">
+            {/* Inert while the mobile drawer is open: keeps focus inside the drawer. */}
+            <div className="flex-1 flex flex-col min-w-0 h-full" {...inertProps(drawerOpenOnMobile)}>
+                <header className="flex items-center gap-1 sm:gap-2 px-2 sm:px-6 h-16 shrink-0">
+                    <button
+                        ref={menuButtonRef}
+                        type="button"
+                        onClick={() => setSidebarOpen(true)}
+                        aria-label={copy.openMenu}
+                        aria-expanded={sidebarOpen}
+                        aria-controls={SIDEBAR_ID}
+                        className="lg:hidden inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2"
+                    >
+                        <Menu className="w-6 h-6" aria-hidden="true" />
+                    </button>
+                    <span className="lg:hidden max-[359px]:hidden text-xl font-bold font-serif tracking-tight">InBridge</span>
 
-                {/* Minimal Top Nav */}
-                <header className="flex items-center justify-between px-6 py-4 z-10 shrink-0">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 -ml-2 text-neutral-500 hover:text-neutral-100 rounded-lg hover:bg-neutral-800">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => { setMessages([]); setCurrentChatId(null); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white text-black hover:bg-gray-800 text-sm font-medium transition-colors shadow-sm">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
-                            New Thread
+                    <div className="ml-auto flex items-center gap-1 sm:gap-2">
+                        <LanguageSelect value={language} onChange={setLanguage} />
+                        <ThemeToggle />
+                        <button
+                            type="button"
+                            onClick={startNewThread}
+                            aria-keyshortcuts="Control+Shift+O Meta+Shift+O"
+                            className="inline-flex items-center justify-center gap-2 min-w-11 h-11 px-3 rounded-full bg-fg text-bg text-sm font-medium hover:opacity-90 transition-opacity"
+                        >
+                            <SquarePen className="w-4 h-4" aria-hidden="true" />
+                            <span className="sr-only sm:not-sr-only">{copy.newThread}</span>
                         </button>
                     </div>
                 </header>
 
-                {/* Main Content Area */}
-                <div className="flex-1 overflow-hidden flex flex-col relative w-full h-full justify-center">
-
-                    {messages.length === 0 ? (
-                        /* Home State: Centered Large Search */
-                        <div className="flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 sm:px-8 pb-32 animate-[fadeIn_0.5s_ease-out]">
-                            <h1
-                                className="text-4xl font-semibold tracking-tight text-neutral-100 mb-8 font-serif"
-                                style={{
-                                    opacity: greetingVisible ? 1 : 0,
-                                    transition: 'opacity 0.4s ease-in-out',
-                                }}
-                            >
-                                {GREETINGS[greetingIndex]}
+                {/* The composer block stays at the same tree position in both states, so it never remounts. */}
+                <div className={`flex-1 min-h-0 flex flex-col ${empty ? 'overflow-y-auto px-4' : ''}`}>
+                    {empty ? (
+                        <div className="mt-auto w-full max-w-3xl mx-auto pt-6 pb-6 text-center">
+                            <h1 className="font-serif text-3xl sm:text-4xl font-semibold tracking-tight text-fg text-balance">
+                                {mode === 'grievance' ? copy.headingGrievance : copy.heading}
                             </h1>
-                            <div className="w-full">
-                                <ChatInput input={inputValue} onInputChange={setInputValue} onSend={handleSend} isStreaming={isStreaming} language={language} onLanguageChange={setLanguage} />
-                            </div>
-
-
+                            <p className="mt-3 text-base text-muted text-balance">
+                                {mode === 'grievance' ? copy.subGrievance : copy.sub}
+                            </p>
                         </div>
                     ) : (
-                        /* Conversational State: Input at bottom */
-                        <div className="flex flex-col h-full w-full">
-                            <ChatWindow messages={messages} isStreaming={isStreaming} onSuggestionClick={handleSuggestionClick} />
-                            <div className="w-full bg-[#0a0a0a] pt-2 pb-6 px-4 md:px-8 z-10 shrink-0 border-t border-neutral-800">
-                                <div className="max-w-4xl mx-auto">
-                                    <ChatInput input={inputValue} onInputChange={setInputValue} onSend={handleSend} isStreaming={isStreaming} language={language} onLanguageChange={setLanguage} />
-                                </div>
-                            </div>
-                        </div>
+                        <ChatWindow
+                            messages={messages}
+                            status={status}
+                            phase={phase}
+                            language={language}
+                            mode={mode}
+                            onFollowUp={send}
+                            onRegenerate={handleRegenerate}
+                        />
                     )}
 
+                    <div className={empty
+                        ? 'w-full max-w-3xl mx-auto'
+                        : 'w-full shrink-0 border-t border-line px-4 md:px-8 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]'}>
+                        <div className={`${empty ? '' : 'max-w-3xl mx-auto'} flex flex-col gap-3`}>
+                            {error && (
+                                <ErrorCard
+                                    error={error}
+                                    language={language}
+                                    onRetry={handleRegenerate}
+                                    onDismiss={clearError}
+                                />
+                            )}
+                            <ChatInput
+                                value={input}
+                                onChange={setInput}
+                                onSend={send}
+                                onStop={() => void stop()}
+                                busy={busy}
+                                language={language}
+                                focus={focus}
+                                onFocusChange={setFocus}
+                                mode={mode}
+                                onModeChange={setMode}
+                                textareaRef={textareaRef}
+                            />
+                        </div>
+                    </div>
+
+                    {empty && (
+                        <div className="mb-auto w-full max-w-3xl mx-auto pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col gap-4">
+                            {mode === 'default' && (
+                                <ul className="grid gap-3 sm:grid-cols-2">
+                                    {copy.starters.map((s) => (
+                                        <li key={s.title}>
+                                            <button
+                                                type="button"
+                                                onClick={() => fillComposer(s.query)}
+                                                className="w-full h-full min-h-11 text-left rounded-lg border border-line bg-surface p-4 hover:bg-surface-2 transition-colors"
+                                            >
+                                                <span className="block text-sm font-semibold text-fg">{s.title}</span>
+                                                <span className="block mt-1 text-sm text-muted">{s.query}</span>
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <Onboarding language={language} />
+                        </div>
+                    )}
                 </div>
             </div>
 
+            <p className="sr-only" role="status" aria-live="polite">{statusText}</p>
         </div>
+    );
+}
+
+/** ChatShell seeded from ?q= and ?mode=. Must be rendered inside <Suspense> (useSearchParams). */
+export function ChatShellFromSearchParams() {
+    const params = useSearchParams();
+    const mode = params.get('mode');
+    return (
+        <ChatShell
+            initialQuery={params.get('q') ?? ''}
+            initialMode={isChatMode(mode) ? mode : 'default'}
+        />
     );
 }
