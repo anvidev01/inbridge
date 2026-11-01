@@ -1,5 +1,5 @@
 /**
- * Scheme directory data — loads scripts/scraper/data/myscheme_schemes.json
+ * Scheme directory data: loads scripts/scraper/data/myscheme_schemes.json
  * once per server process, normalises it, and answers search / filter / count
  * queries for /, /services and /services/[slug].
  *
@@ -93,6 +93,8 @@ export const PAGE_SIZE = 20;
 
 /** Shown wherever dataset facts appear. The JSON was committed on 2026-08-30 (9e12a38). */
 export const DATASET_LABEL = 'myScheme snapshot, Aug 2026';
+/** The month the snapshot was taken, for sentences ("a snapshot taken in August 2026"). */
+export const DATASET_MONTH = 'August 2026';
 
 const ALL_STATES_MARKER = 'all';
 const MYSCHEME_PREFIX = 'https://www.myscheme.gov.in/';
@@ -148,7 +150,7 @@ function parsePythonList(text: string): string[] | null {
  * Coerces a dataset list field to string[]. The current JSON already has real
  * arrays, but older scraper.py output stored them as stringified Python lists,
  * so both shapes (and a stringified list nested inside an array) are accepted.
- * A plain string that is not a list literal is one item — never split on
+ * A plain string that is not a list literal is one item. Never split on
  * commas, because category names contain commas ("Banking,Financial ...").
  */
 export function parseList(value: unknown): string[] {
@@ -183,6 +185,15 @@ function str(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
 }
 
+/**
+ * Display text without em dashes: the site sets none, so a dash in the source
+ * text (and the spaces around it) becomes a comma. Only names and briefs pass
+ * through here; slugs, URLs and filter keys are left exactly as in the data.
+ */
+export function withoutEmDashes(text: string): string {
+    return text.replace(/\s*\u2014\s*/g, ', ');
+}
+
 /** Turns one raw dataset record into a Scheme, or null if it lacks a slug or name. */
 export function normaliseScheme(raw: unknown): Scheme | null {
     if (!raw || typeof raw !== 'object') return null;
@@ -199,7 +210,7 @@ export function normaliseScheme(raw: unknown): Scheme | null {
 
     return {
         slug,
-        name,
+        name: withoutEmDashes(name),
         short: str(r.short),
         issuer: str(r.issuer),
         level: str(r.level) === 'Central' ? 'Central' : 'State',
@@ -208,14 +219,14 @@ export function normaliseScheme(raw: unknown): Scheme | null {
         categories: parseList(r.categories),
         // '#N/A' and null both mean "not stated" in the source data.
         audience: audienceRaw && audienceRaw !== '#N/A' ? audienceRaw : null,
-        brief: str(r.brief),
+        brief: withoutEmDashes(str(r.brief)),
         tags: parseList(r.tags),
         source: source.startsWith(MYSCHEME_PREFIX) ? source : null,
     };
 }
 
 /**
- * Lower-case, strip Latin diacritics and punctuation, collapse spaces — for
+ * Lower-case, strip Latin diacritics and punctuation, collapse spaces, for
  * matching only. Only U+0300–U+036F (Latin combining accents) are removed;
  * other combining marks (\p{M}) are kept because in Devanagari they are part
  * of the word: vowel signs, virama and anusvara ("किसान", "छात्रवृत्ति").

@@ -1,40 +1,35 @@
 /**
- * One scheme in the /services directory (and the landing-page sample).
+ * One scheme in the /services directory (and the landing-page sample), set as
+ * an entry in an editorial list rather than a boxed card: the name large in
+ * the serif, one plain line of facts, the brief, two text links.
  * Server component. Shows only fields that exist in the myScheme dataset;
  * no eligibility claims, amounts or deadlines.
  */
-import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, MessageSquare } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { askHref, categoryLabel, type Scheme, type SchemeFilters } from '@/lib/schemes';
 
+/** "Central scheme" in green ink, "State scheme" in the soft ink. Plain text, no pill. */
 export function LevelBadge({ level }: { level: Scheme['level'] }) {
     return (
-        <span
-            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${level === 'Central' ? 'border-accent text-accent' : 'border-line text-muted'}`}
-        >
-            {level === 'Central' ? 'Central' : 'State'}
-        </span>
-    );
-}
-
-function Chip({ children }: { children: ReactNode }) {
-    return (
-        <span className="inline-flex items-center rounded-full bg-surface-2 px-2.5 py-1 text-xs text-fg">
-            {children}
+        <span className={`font-medium ${level === 'Central' ? 'text-accent' : 'text-fg'}`}>
+            {level === 'Central' ? 'Central scheme' : 'State scheme'}
         </span>
     );
 }
 
 /** Which of the user's filters this scheme matches, phrased as facts from the listing. */
-function matchChips(scheme: Scheme, filters: SchemeFilters): string[] {
-    const chips: string[] = [];
+function matchNotes(scheme: Scheme, filters: SchemeFilters): string[] {
+    const notes: string[] = [];
     if (filters.state) {
-        chips.push(scheme.states.includes(filters.state) ? `Listed for ${filters.state}` : 'All-India scheme');
+        notes.push(scheme.states.includes(filters.state) ? `Listed for ${filters.state}` : 'All-India scheme');
     }
-    if (filters.category) chips.push(categoryLabel(filters.category));
-    return chips;
+    if (filters.category) notes.push(categoryLabel(filters.category));
+    return notes;
 }
+
+const LINK =
+    'inline-flex items-center gap-1.5 min-h-11 text-sm font-medium underline decoration-1 underline-offset-[5px] transition-[text-decoration-thickness,color] duration-200 hover:decoration-[3px]';
 
 export function SchemeCard({
     scheme,
@@ -46,52 +41,52 @@ export function SchemeCard({
     headingLevel?: 'h2' | 'h3';
 }) {
     const Heading = headingLevel;
-    const chips = matchChips(scheme, filters);
-    const otherCategories = scheme.categories.filter((c) => c !== filters.category);
+    const notes = matchNotes(scheme, filters);
+    const otherCategories = scheme.categories.filter((c) => c !== filters.category).map(categoryLabel);
+    const facts = [scheme.issuer, ...otherCategories].filter(Boolean);
 
     return (
-        <article className="rounded-lg border border-line bg-surface p-5 sm:p-6">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-                <LevelBadge level={scheme.level} />
-                <span className="break-words min-w-0">{scheme.issuer}</span>
-            </div>
-
-            <Heading className="mt-3 font-serif text-xl leading-snug text-fg break-words">
-                <Link href={`/services/${scheme.slug}`} className="hover:text-accent">
+        <article className="min-w-0">
+            <Heading className="font-serif text-[length:clamp(1.25rem,1.1rem_+_0.6vw,1.5rem)] leading-[1.3] text-fg break-words text-pretty">
+                <Link
+                    href={`/services/${scheme.slug}`}
+                    className="decoration-accent decoration-2 underline-offset-[6px] transition-colors duration-200 hover:underline hover:text-accent"
+                >
                     {scheme.name}
                 </Link>
             </Heading>
 
-            <p className="mt-2 text-[15px] leading-relaxed text-muted break-words">{scheme.brief}</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted break-words">
+                <LevelBadge level={scheme.level} />
+                {notes.length > 0 && (
+                    <>
+                        <span className="sr-only">. Matches your filters:</span>
+                        {notes.map((n) => (
+                            <span key={n}> · <span className="text-fg">{n}</span></span>
+                        ))}
+                    </>
+                )}
+                {facts.map((f, i) => (
+                    <span key={i}> · {f}</span>
+                ))}
+            </p>
 
-            {(chips.length > 0 || otherCategories.length > 0) && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                    {chips.length > 0 && <span className="sr-only">Matches your filters:</span>}
-                    {chips.map((c) => <Chip key={c}>{c}</Chip>)}
-                    {otherCategories.map((c) => (
-                        <span key={c} className="inline-flex items-center rounded-full border border-line px-2.5 py-1 text-xs text-muted">
-                            {categoryLabel(c)}
-                        </span>
-                    ))}
-                </div>
+            {scheme.brief && (
+                <p className="mt-3 max-w-[62ch] text-lg leading-[1.65] text-fg break-words">{scheme.brief}</p>
             )}
 
-            <div className="mt-5 flex flex-wrap gap-x-2 gap-y-1 -ml-2">
-                <Link
-                    href={askHref(`Tell me about ${scheme.name}`)}
-                    className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm font-medium text-accent hover:underline underline-offset-4"
-                >
-                    <MessageSquare size={16} aria-hidden="true" />
-                    Ask InBridge
+            <div className="mt-2 flex flex-wrap gap-x-7">
+                <Link href={askHref(`Tell me about ${scheme.name}`)} className={`${LINK} text-accent decoration-accent`}>
+                    Ask InBridge about it
                 </Link>
                 {scheme.source && (
                     <a
                         href={scheme.source}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 min-h-11 px-2 text-sm text-fg hover:underline underline-offset-4"
+                        className={`${LINK} text-fg decoration-muted hover:text-accent hover:decoration-accent`}
                     >
-                        View on myScheme
+                        Official page on myScheme
                         <ArrowUpRight size={16} aria-hidden="true" />
                         <span className="sr-only"> (opens in a new tab)</span>
                     </a>

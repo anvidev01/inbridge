@@ -21,6 +21,7 @@ import {
     queryTerms,
     nameSortKey,
     rankRelated,
+    withoutEmDashes,
     type Scheme,
 } from '../schemes';
 import { pngSize } from '../site';
@@ -55,8 +56,8 @@ const FIXTURE = [
         brief: 'Support for farmers in the north-east.', tags: ['Farmers'],
         source: 'https://www.myscheme.gov.in/schemes/ne-central',
     },
-    { slug: '', name: 'No slug — dropped' },
-    { slug: 'pm-kisan', name: 'Duplicate slug — dropped' },
+    { slug: '', name: 'No slug, dropped' },
+    { slug: 'pm-kisan', name: 'Duplicate slug, dropped' },
 ];
 
 describe('parseList', () => {
@@ -92,6 +93,16 @@ describe('normaliseScheme', () => {
         assert.equal(gj.audience, null, "'#N/A' means not stated");
         assert.equal(gj.source, null, 'non-myScheme URLs are not linked');
         assert.equal(normaliseScheme(FIXTURE[3])!.audience, null);
+    });
+
+    test('sets em dashes in names and briefs as commas, leaving slugs alone', () => {
+        const s = normaliseScheme({
+            slug: 'a\u2014b', name: 'Scheme \u2014 Phase II', brief: 'levels\u2014Post Graduate and Prathama\u2014in any college',
+        })!;
+        assert.equal(s.slug, 'a\u2014b');
+        assert.equal(s.name, 'Scheme, Phase II');
+        assert.equal(s.brief, 'levels, Post Graduate and Prathama, in any college');
+        assert.equal(withoutEmDashes('no dash - here'), 'no dash - here');
     });
 
     test('rejects records without slug or name', () => {
