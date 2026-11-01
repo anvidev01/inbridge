@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * app/global-error.tsx — last-resort boundary for errors in the root layout
+ * app/global-error.tsx: last-resort boundary for errors in the root layout
  * Replaces the root layout, so it renders its own <html>/<body>. The theme
  * bootstrap and next/font do not run here, so :root dark tokens apply and the
  * font variables globals.css expects (--font-inter etc.) are defined inline on

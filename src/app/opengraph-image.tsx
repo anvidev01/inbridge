@@ -1,5 +1,5 @@
 /**
- * app/opengraph-image.tsx — 1200x630 social card (also used by X/Twitter,
+ * app/opengraph-image.tsx: 1200x630 social card (also used by X/Twitter,
  * which falls back to og:image). Purely typographic: no emblem, flag or stats.
  *
  * Fonts are fetched from Google Fonts at build time, subset to the exact text.
@@ -11,7 +11,7 @@
  */
 import { ImageResponse } from "next/og";
 
-export const alt = "InBridge — answers about Indian government schemes, linked to official sources";
+export const alt = "InBridge: answers about Indian government schemes, linked to official sources";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -22,7 +22,7 @@ const MUTED = "#a3a3a3";
 const ACCENT = "#9fa8ff";
 
 const WORDMARK = "InBridge";
-const TAGLINE = "Answers about Indian government schemes — linked to official sources";
+const TAGLINE = "Answers about Indian government schemes, linked to official sources";
 const LANG_LINE = "Independent · English · Hindi · Hinglish";
 const DOMAIN = "inbridge.in";
 

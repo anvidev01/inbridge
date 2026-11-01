@@ -1,5 +1,5 @@
 /**
- * app/not-found.tsx — 404 page
+ * app/not-found.tsx: 404 page
  * Rendered inside the root layout, so tokens, fonts and the skip link apply.
  */
 import type { Metadata } from "next";

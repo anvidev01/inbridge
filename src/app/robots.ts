@@ -1,4 +1,4 @@
-/** app/robots.ts — served as /robots.txt */
+/** app/robots.ts: served as /robots.txt */
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 

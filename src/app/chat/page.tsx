@@ -7,7 +7,7 @@ export const metadata = {
 };
 
 /**
- * /chat — supports ?q=<question> (fills the composer, never auto-sends) and
+ * /chat: supports ?q=<question> (fills the composer, never auto-sends) and
  * ?mode=grievance (complaint drafter). useSearchParams needs a Suspense
  * boundary; the fallback is the same shell without the URL values so the
  * page still prerenders.

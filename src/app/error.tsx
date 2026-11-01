@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * app/error.tsx — route-level error boundary
+ * app/error.tsx: route-level error boundary
  * Rendered inside the root layout. Links are plain <a> on purpose: a full
  * navigation clears the failed render even when the error came from /chat.
  */

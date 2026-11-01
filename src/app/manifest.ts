@@ -1,5 +1,5 @@
 /**
- * app/manifest.ts — served as /manifest.webmanifest
+ * app/manifest.ts: served as /manifest.webmanifest
  * Colours match the dark tokens in globals.css (--bg #0a0a0a). Icon sizes are
  * the real pixel sizes of the files in public/. All icons are rendered from
  * the InBridge mark in src/app/icon.svg (an arch whose keystone is the dot of

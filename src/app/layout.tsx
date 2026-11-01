@@ -1,5 +1,5 @@
 /**
- * app/layout.tsx — Root layout for InBridge
+ * app/layout.tsx: Root layout for InBridge
  * Fonts, theme bootstrap, site-wide metadata. Each page renders its own
  * <main id="main-content"> (the skip link targets it).
  */
@@ -8,7 +8,7 @@ import { Inter, Noto_Sans_Devanagari, Noto_Serif_Devanagari, Source_Serif_4 } fr
 import "./globals.css";
 import { SITE_URL } from "@/lib/site";
 
-/* Inter — clean, highly legible for low-literacy users */
+/* Inter: clean, highly legible for low-literacy users */
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -42,7 +42,7 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "InBridge — answers about Indian government schemes, with official sources",
+    default: "InBridge: answers about Indian government schemes, with official sources",
     template: "%s · InBridge",
   },
   description: DESCRIPTION,
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: "InBridge", description: DESCRIPTION },
 };
 
-/* WCAG 1.4.4 — must allow zoom up to at least 200% for low-vision users */
+/* WCAG 1.4.4: must allow zoom up to at least 200% for low-vision users */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -94,7 +94,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    /* WCAG 3.1.1 — language of page declared; the chat updates it with the language toggle */
+    /* WCAG 3.1.1: language of page declared; the chat updates it with the language toggle */
     <html
       lang="en-IN"
       data-theme="dark"
