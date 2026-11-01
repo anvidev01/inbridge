@@ -48,6 +48,8 @@ export interface AnswerStrings {
     openCpgrams: string;
     draftNotice: string;
     unverifiedLink: string;
+    /** Marks an answer that ended early (Stop pressed or the stream broke). */
+    stopped: string;
 }
 
 export const FEEDBACK_REASONS = ['wrong_info', 'outdated', 'wrong_scheme', 'broken_link', 'wrong_language'] as const;
@@ -110,6 +112,7 @@ const en: AnswerStrings = {
     openCpgrams: 'Open CPGRAMS (pgportal.gov.in)',
     draftNotice: 'InBridge does not file complaints for you.',
     unverifiedLink: 'Link not from a government domain or a cited source',
+    stopped: '(stopped)',
 };
 
 const hi: AnswerStrings = {
@@ -169,6 +172,7 @@ const hi: AnswerStrings = {
     openCpgrams: 'CPGRAMS खोलें (pgportal.gov.in)',
     draftNotice: 'InBridge आपकी ओर से शिकायत दर्ज नहीं करता।',
     unverifiedLink: 'यह लिंक सरकारी डोमेन या दिए गए स्रोतों से नहीं है',
+    stopped: '(रोका गया)',
 };
 
 const hinglish: AnswerStrings = {
@@ -228,6 +232,7 @@ const hinglish: AnswerStrings = {
     openCpgrams: 'CPGRAMS kholein (pgportal.gov.in)',
     draftNotice: 'InBridge aapke liye complaint file nahi karta.',
     unverifiedLink: 'Yeh link government domain ya cited source se nahi hai',
+    stopped: '(ruk gaya)',
 };
 
 const STRINGS: Record<Language, AnswerStrings> = { en, hi, hinglish };

@@ -47,6 +47,18 @@ export function SourceSheet({ open, onClose, sources, strings, lang }: SourceShe
         return () => dialog.removeEventListener('close', onDialogClose);
     }, [onClose]);
 
+    // Lock background scroll while open (a modal dialog does not stop the page
+    // behind a bottom sheet from scrolling on mobile).
+    useEffect(() => {
+        if (!open) return;
+        const root = document.documentElement;
+        const previous = root.style.overflow;
+        root.style.overflow = 'hidden';
+        return () => {
+            root.style.overflow = previous;
+        };
+    }, [open]);
+
     const titleId = useId();
 
     return (
@@ -56,7 +68,7 @@ export function SourceSheet({ open, onClose, sources, strings, lang }: SourceShe
             aria-labelledby={titleId}
             // Clicks on the ::backdrop land on the <dialog> element itself.
             onClick={(e) => { if (e.target === e.currentTarget) ref.current?.close(); }}
-            className="fixed inset-x-0 bottom-0 top-auto m-0 h-auto max-h-[85dvh] w-full max-w-none overflow-hidden rounded-t-xl border border-line bg-surface p-0 text-fg backdrop:bg-black/60 md:inset-y-0 md:left-auto md:right-0 md:h-dvh md:max-h-none md:w-[420px] md:rounded-none md:border-y-0 md:border-r-0"
+            className="fixed inset-x-0 bottom-0 top-auto m-0 h-auto max-h-[85dvh] w-full max-w-none overflow-hidden rounded-t-xl border border-line bg-surface p-0 text-fg backdrop:bg-bg/70 md:inset-y-0 md:left-auto md:right-0 md:h-dvh md:max-h-none md:w-[420px] md:rounded-none md:border-y-0 md:border-r-0"
         >
             <div className="flex max-h-[inherit] flex-col md:h-full">
                 <div className="flex items-center justify-between gap-2 border-b border-line py-2 pl-4 pr-2">
@@ -91,7 +103,7 @@ export function SourceSheet({ open, onClose, sources, strings, lang }: SourceShe
                                             <span className="font-semibold text-official" title={strings.officialHint}>{strings.official}</span>
                                         )}
                                     </span>
-                                    <span className="mt-1 block text-xs text-muted break-anywhere">{s.url}</span>
+                                    <span className="mt-1 block text-xs text-muted wrap-anywhere">{s.url}</span>
                                 </span>
                                 <ExternalLink size={14} aria-hidden="true" className="mt-1 shrink-0 text-muted" />
                                 <span className="sr-only">{strings.newTab}</span>
