@@ -114,6 +114,10 @@ export type InBridgeDataParts = {
 export interface InBridgeMetadata {
     /** Epoch ms, set by the server on the 'start' chunk. */
     createdAt?: number;
+    /** Mode the answer was generated in (server sets it on 'start'). Prefer this over the current UI mode. */
+    mode?: ChatMode;
+    /** Language the answer was generated in (server sets it on 'start'). */
+    language?: Language;
 }
 
 export type InBridgeUIMessage = UIMessage<InBridgeMetadata, InBridgeDataParts>;
