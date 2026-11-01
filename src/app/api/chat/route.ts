@@ -1,159 +1,217 @@
-import { checkRateLimit } from '@/lib/ai/ratelimit';
-import { checkGuardrails } from '@/lib/guardrails';
-import { RAGEngine } from '@/lib/rag-engine';
-import { routeChatStream } from '@/lib/ai/router';
-import { systemPrompt } from '@/lib/ai/system-prompt';
-import { UIMessage, createUIMessageStream, createUIMessageStreamResponse } from 'ai';
+import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
+import { buildRetrievalQuery, latestUserText, parseChatRequest } from '@/lib/ai/chat-request';
+import { buildSources } from '@/lib/ai/citations';
+import { checkRateLimit, clientIp, type RateLimitResult } from '@/lib/ai/ratelimit';
+import { noProviderConfigured, ProviderUnavailableError, routeChatStream } from '@/lib/ai/router';
+import { FollowupSplitter, fixedFollowups, parseFollowups } from '@/lib/ai/stream-filters';
+import { buildSystemPrompt } from '@/lib/ai/system-prompt';
+import { chatError } from '@/lib/ai/user-copy';
+import {
+    isChatMode,
+    isLanguage,
+    type ChatErrorCode,
+    type Citation,
+    type InBridgeUIMessage,
+    type Language,
+    type Provenance,
+} from '@/lib/chat/protocol';
+import { checkGuardrails, hasInjection, maskPII, type GuardrailKind } from '@/lib/guardrails';
+import { log } from '@/lib/observability/logger';
+import { TelemetryBatch } from '@/lib/observability/telemetry';
+import { DATASET_LABEL, RAGEngine, type RetrievedContext } from '@/lib/rag-engine';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const ragEngine = new RAGEngine();
 
-function getMessageText(message: any): string {
-    if (!message) return '';
-    if (typeof message.content === 'string' && message.content) {
-        return message.content;
+/** Requests larger than this are rejected before parsing. */
+const MAX_BODY_BYTES = 256 * 1024;
+
+const STATUS: Record<ChatErrorCode, number> = {
+    bad_request: 400,
+    guardrail: 400,
+    rate_limited: 429,
+    provider_unavailable: 503,
+    server_error: 500,
+};
+
+function errorResponse(
+    code: ChatErrorCode,
+    language: Language,
+    options: { guardrail?: GuardrailKind; rateLimit?: RateLimitResult } = {}
+): Response {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (options.rateLimit) {
+        const { limit, remaining, reset } = options.rateLimit;
+        headers['X-RateLimit-Limit'] = String(limit);
+        headers['X-RateLimit-Remaining'] = String(remaining);
+        headers['X-RateLimit-Reset'] = String(reset);
+        headers['Retry-After'] = String(Math.max(1, Math.ceil((reset - Date.now()) / 1000)));
     }
-    if (Array.isArray(message.parts)) {
-        return message.parts
-            .filter((p: any) => p.type === 'text')
-            .map((p: any) => p.text)
-            .join('');
-    }
-    return '';
+    return new Response(JSON.stringify(chatError(code, language, options.guardrail)), {
+        status: STATUS[code],
+        headers,
+    });
 }
 
-async function* normalizeStream(stream: any): AsyncGenerator<string, void, unknown> {
-    if (stream && typeof stream.on === 'function') {
-        // Anthropic MessageStream (Event Emitter style / Symbol.asyncIterator)
-        for await (const event of stream) {
-            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-                yield event.delta.text;
-            }
-        }
-    } else if (stream && (typeof stream.next === 'function' || stream[Symbol.asyncIterator])) {
-        // AsyncIterable (Gemini content stream or Groq AI SDK stream)
-        for await (const chunk of stream) {
-            if (typeof chunk === 'string') {
-                yield chunk;
-            } else if (chunk && typeof chunk.text === 'function') {
-                yield chunk.text();
-            } else if (chunk && chunk.candidates && chunk.candidates[0]?.content?.parts?.[0]?.text) {
-                yield chunk.candidates[0].content.parts[0].text;
-            }
-        }
-    } else {
-        throw new Error('Unsupported stream format returned from provider');
-    }
-}
-
+/**
+ * POST /api/chat
+ *
+ * Body: { messages, language, mode?, focus? } (see ChatRequestExtras in
+ * src/lib/chat/protocol.ts). Streams an AI SDK v6 UI message:
+ *   start (metadata.createdAt) -> data-phase (transient, real phases only)
+ *   -> data-sources + data-provenance -> text -> data-followups -> finish
+ *
+ * Every non-200 is a ChatErrorBody. An error after streaming has started is
+ * sent as the stream's errorText, which is the same JSON, so the client can
+ * parse error.message identically in both cases.
+ */
 export async function POST(req: Request) {
+    let language: Language = 'en';
     try {
-        // 1. Rate Limiting (checked first)
-        const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || '127.0.0.1';
-        const rateLimitRes = await checkRateLimit(ip);
-        if (!rateLimitRes.success) {
-            return new Response(
-                JSON.stringify({ error: "Too many requests. Please try again in a minute. (कृपया थोड़ी देर बाद पुनः प्रयास करें।)" }),
-                {
-                    status: 429,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-RateLimit-Limit': String(rateLimitRes.limit),
-                        'X-RateLimit-Remaining': String(rateLimitRes.remaining),
-                        'X-RateLimit-Reset': String(rateLimitRes.reset),
-                    }
-                }
-            );
+        const declaredLength = Number(req.headers.get('content-length') || 0);
+        if (declaredLength > MAX_BODY_BYTES) return errorResponse('bad_request', language);
+
+        let body: unknown;
+        try {
+            const raw = await req.text();
+            if (raw.length > MAX_BODY_BYTES) return errorResponse('bad_request', language);
+            body = JSON.parse(raw);
+        } catch {
+            return errorResponse('bad_request', language);
+        }
+        const fields = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+        if (isLanguage(fields.language)) language = fields.language;
+        const mode = isChatMode(fields.mode) ? fields.mode : 'default';
+
+        // 1. Rate limit.
+        const rateLimit = await checkRateLimit(clientIp(req.headers));
+        if (!rateLimit.success) return errorResponse('rate_limited', language, { rateLimit });
+
+        // 2. Guardrails on the message being asked now. In the complaint
+        // drafter PII does not block; it is masked below instead.
+        const latest = Array.isArray(fields.messages) ? latestUserText(fields.messages) : '';
+        const guard = checkGuardrails(latest, { allowPII: mode === 'grievance' });
+        if (!guard.safe) {
+            log.info('Guardrail blocked message', { kind: guard.kind, mode });
+            return errorResponse('guardrail', language, { guardrail: guard.kind });
         }
 
-        // 2. Parse request body
-        const body = await req.json();
-        const messages: UIMessage[] = body.messages ?? [];
-        const userMessages = messages.filter(m => m.role === 'user');
-        const lastUserMessage = userMessages[userMessages.length - 1];
-        const queryText = getMessageText(lastUserMessage);
+        // 3. Validate and normalise. Earlier user turns are not re-blocked
+        // (a blocked message stays in the client's history and would otherwise
+        // block every later question in the thread): injection turns are
+        // dropped and PII is masked in every turn before it leaves this server.
+        const parsed = parseChatRequest(body, (content, isLatest) =>
+            !isLatest && hasInjection(content) ? null : maskPII(content)
+        );
+        if (!parsed.ok) {
+            log.info('Rejected chat request', { reason: parsed.reason });
+            return errorResponse('bad_request', language);
+        }
+        const { turns, focus } = parsed.value;
 
-
-        // 3. Guardrails & PII Check (checked next, before LLM or search)
-        const guardrailRes = checkGuardrails(queryText);
-        if (!guardrailRes.safe) {
-            return new Response(
-                JSON.stringify({ error: guardrailRes.error }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+        if (noProviderConfigured()) {
+            log.error('No LLM provider configured: set ANTHROPIC_API_KEY, GOOGLE_GEMINI_API_KEY or GROQ_API_KEY');
+            return errorResponse('provider_unavailable', language);
         }
 
-        // 4. Retrieve Context (FAISS vector store search with Tavily fallback)
-        const { context, citations } = await ragEngine.retrieveContext(queryText);
+        const signal = req.signal;
+        const telemetry = new TelemetryBatch();
 
-        // 5. Build Dynamic System Prompt with Language Instruction and Context
-        const languageInstruction = body.languageInstruction
-            ? `\n\nIMPORTANT: ${body.languageInstruction}`
-            : '\n\nIMPORTANT: Always respond in English only.';
-
-        const fullSystemPrompt = `${systemPrompt}
-${languageInstruction}
-
-STRICT INSTRUCTIONS:
-1. Use the provided Context ONLY. If the Answer is not in the context, politely say you don't know in the target language.
-2. The Context is provided in English/Hindi. You MUST TRANSLATE and SYNTHESIZE the answer into the target language defined above.
-3. Be polite, formal, and accurate.
-4. Keep the answer concise.
-5. Do NOT include any source links/URLs in the text of your answer unless they are verified in the context or citations.
-
-CONTEXT:
-${context}
-`;
-
-        // 6. Map messages to format expected by routeChatStream
-        const routerMessages = messages.map(msg => ({
-            role: msg.role as 'user' | 'assistant' | 'system',
-            content: getMessageText(msg)
-        }));
-
-        // Execute failover stream selection
-        const rawStream = await routeChatStream(routerMessages, undefined, fullSystemPrompt);
-
-        // 7. Emit an AI SDK v6 UI message stream.
-        // The frontend uses useChat + DefaultChatTransport (AI SDK v6), which
-        // parses the v6 UI-message-stream (text-start / text-delta / text-end),
-        // NOT the legacy v4 `0:"..."` data-stream protocol. Emitting v4 here
-        // left message.parts empty on the client, so nothing rendered.
-        //
-        // Sources ride at the front of the same text part; MessageBubble splits
-        // the ---SOURCES---...---END_SOURCES--- block back out of the text.
-        const sourcesBlock = `---SOURCES---\n${JSON.stringify(
-            citations.map((c: any) => ({ title: c.title || 'Source', url: c.url || '' }))
-        )}\n---END_SOURCES---\n`;
-
-        const stream = createUIMessageStream({
+        const stream = createUIMessageStream<InBridgeUIMessage>({
             execute: async ({ writer }) => {
-                const id = 'assistant-text';
-                writer.write({ type: 'text-start', id });
-                writer.write({ type: 'text-delta', id, delta: sourcesBlock });
+                writer.write({ type: 'start', messageMetadata: { createdAt: Date.now() } });
+
                 try {
-                    for await (const chunk of normalizeStream(rawStream)) {
-                        if (chunk) writer.write({ type: 'text-delta', id, delta: chunk });
+                    // 4. Retrieval. The complaint drafter works from what the
+                    // user tells it, so it skips the search.
+                    let retrieved: RetrievedContext;
+                    if (mode === 'grievance') {
+                        retrieved = { docs: [], source: 'llm_direct', retrievedAt: new Date().toISOString() };
+                    } else {
+                        try {
+                            retrieved = await ragEngine.retrieveContext(buildRetrievalQuery(turns), {
+                                telemetry,
+                                focus,
+                                recencyText: turns[turns.length - 1].content,
+                                onPhase: (phase) =>
+                                    writer.write({ type: 'data-phase', data: { phase }, transient: true }),
+                            });
+                        } catch (error) {
+                            log.error('Retrieval failed; answering without context', { error });
+                            retrieved = { docs: [], source: 'llm_direct', retrievedAt: new Date().toISOString() };
+                        }
                     }
+
+                    const { citations, promptSources } = buildSources(retrieved.docs);
+                    if (citations.length > 0) {
+                        writer.write({
+                            type: 'data-phase',
+                            data: { phase: 'reading', count: citations.length },
+                            transient: true,
+                        });
+                    }
+
+                    // 5. Sources and provenance go out before any answer text.
+                    const provenance: Provenance = {
+                        source: retrieved.source,
+                        retrievedAt: retrieved.retrievedAt,
+                        ...(retrieved.source === 'vector_store' ? { datasetLabel: DATASET_LABEL } : {}),
+                    };
+                    writer.write({ type: 'data-sources', id: 'sources', data: citations satisfies Citation[] });
+                    writer.write({ type: 'data-provenance', id: 'provenance', data: provenance });
+
+                    // 6. LLM, with failover until a provider produces its first token.
+                    const system = buildSystemPrompt({ language, mode, focus, sources: promptSources });
+                    const routed = await routeChatStream({ turns, system, signal }, { telemetry });
+
+                    writer.write({ type: 'data-phase', data: { phase: 'writing' }, transient: true });
+
+                    // 7. Answer text. The follow-up marker and everything after
+                    // it are held back from the client.
+                    const textId = 'answer';
+                    const splitter = new FollowupSplitter();
+                    writer.write({ type: 'text-start', id: textId });
+                    try {
+                        for await (const chunk of routed.stream) {
+                            const visible = splitter.push(chunk);
+                            if (visible) writer.write({ type: 'text-delta', id: textId, delta: visible });
+                        }
+                        const rest = splitter.flush();
+                        if (rest) writer.write({ type: 'text-delta', id: textId, delta: rest });
+                    } finally {
+                        writer.write({ type: 'text-end', id: textId });
+                    }
+
+                    // 8. Follow-ups, parsed from the held-back tail.
+                    const followups = parseFollowups(splitter.tail) ?? fixedFollowups(language, mode);
+                    if (!splitter.markerSeen) log.info('Model omitted follow-ups; using fixed set', { provider: routed.provider });
+                    writer.write({ type: 'data-followups', id: 'followups', data: followups });
+
+                    writer.write({ type: 'finish' });
+                } catch (error) {
+                    // Stop pressed or tab closed: nothing to report to anyone.
+                    if (signal.aborted) return;
+                    throw error;
                 } finally {
-                    writer.write({ type: 'text-end', id });
+                    await telemetry.flush();
                 }
             },
             onError: (error: unknown) => {
-                console.error('Chat stream error:', error);
-                return error instanceof Error ? error.message : 'An error occurred while generating the response.';
+                const code: ChatErrorCode = error instanceof ProviderUnavailableError ? 'provider_unavailable' : 'server_error';
+                log.error('Chat stream error', {
+                    code,
+                    error,
+                    cause: error instanceof ProviderUnavailableError ? error.lastError : undefined,
+                });
+                return JSON.stringify(chatError(code, language));
             },
         });
 
         return createUIMessageStreamResponse({ stream });
-
-    } catch (error: any) {
-        console.error('Chat API Error:', error);
-        return new Response(
-            JSON.stringify({ error: error.message || 'An error occurred.' }),
-            { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
+    } catch (error) {
+        log.error('Chat API error', { error });
+        return errorResponse('server_error', language);
     }
 }

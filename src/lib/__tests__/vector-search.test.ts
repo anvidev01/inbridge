@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'path';
 import { parseFlatIndex, searchFlatL2, LocalVectorStore } from '../vector-search';
-import { cosineFromFaissScore } from '../rag-engine';
+import { cosineFromFaissScore, matchesFocus } from '../rag-engine';
 
 /** Builds a buffer in FAISS IndexFlatL2 on-disk layout. */
 function flatIndexBuffer(vectors: number[][]): Buffer {
@@ -62,5 +62,22 @@ describe('LocalVectorStore (real vector_store + bundled model)', () => {
         const [[doc, score]] = await store.similaritySearchWithScore('PM-KISAN eligibility', 3);
         assert.match(doc.pageContent, /PM-KISAN/);
         assert.ok(cosineFromFaissScore(score) >= 0.35, `cosine ${cosineFromFaissScore(score)}`);
+    });
+});
+
+describe('filtered search (focus)', () => {
+    test('searchFlatL2 returns the top k of the filtered set only', () => {
+        const index = parseFlatIndex(flatIndexBuffer([[1, 0], [0, 1], [0.9, 0.1], [0.8, 0.6]]));
+        const top = searchFlatL2(index, [1, 0], 2, (i) => i !== 0 && i !== 2);
+        assert.deepEqual(top.map(([i]) => i), [3, 1]);
+    });
+
+    test('a category filter on the real store keeps only that category', async () => {
+        const store = await LocalVectorStore.load(path.join(process.cwd(), 'vector_store'));
+        const results = await store.similaritySearchWithScore('scholarship for students', 3, (doc) =>
+            matchesFocus(doc.pageContent, 'Health & Wellness')
+        );
+        assert.equal(results.length, 3);
+        for (const [doc] of results) assert.match(doc.pageContent, /^CATEGORY: .*Health & Wellness/m);
     });
 });
