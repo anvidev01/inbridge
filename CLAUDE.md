@@ -18,6 +18,11 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - The product is intentionally chat-only: `/`, `/services`, `/grievance`, `/status`, `/apply/*` all redirect to `/chat` (only `/services/<slug>` detail pages and `/chat` render). Note `curl -L` hides this — use `curl -I` when checking status codes.
 
 ## Change Log
+### 2026-11-01 — Live government search (Tavily) actually returns results
+- **Root cause (from Vercel runtime logs)**: Tavily was called on every query but returned 0 results with no error — `include_domains` was `[".gov.in", ".nic.in"]` (leading dot). Combined with the FAISS failure below, every answer had empty context and the model replied "I cannot browse the live internet".
+- **Fix** (`src/lib/rag-engine.ts`): new `searchGovPortals()` — searches with `includeDomains: ["gov.in","nic.in"]`, retries unrestricted with `site:` hints if empty, and re-checks every result with `isGovUrl()` so only `.gov.in`/`.nic.in` pages reach the LLM. Logs `Tavily search completed` with raw vs gov result counts. Recency queries (`isRecencyQuery`: latest/new/2026/deadline/नवीनतम…) go to live search *before* the static vector store. Tests: `src/lib/__tests__/gov-search.test.ts`.
+- **Still open**: FAISS vector store fails on Vercel — `faiss-node` native binary (`node_modules/faiss-node/build/Release/*`) isn't traced into the function bundle, and the transformers.js embedding model also needs onnxruntime + a writable cache. Until fixed, all queries are answered from live Tavily search.
+
 ### 2026-11-01 — Fix Vercel build (npm 404)
 - **Fix**: `npm install` failed on Vercel with `404 Not Found` for `@tigrisdata/vector@1.1.0`. Both `@tigrisdata/core` and `@tigrisdata/vector` have been removed from the npm registry (every version 404s). Neither is imported anywhere in the code, so both were dropped from `package.json` / `package-lock.json`. Verified with a clean `npm ci` + `npm run build`.
 - **Open (not fixed yet)**: live `/api/chat` returns empty sources for every query — the FAISS vector store fails to load on Vercel (see commit 788fc46) and the Tavily fallback also returns nothing. Check runtime logs for `Failed to load vector store` / `Tavily search error` after this deploy.

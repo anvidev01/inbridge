@@ -49,6 +49,39 @@ export function cosineFromFaissScore(score: number): number {
     return 1 - score / 2;
 }
 
+interface TavilyResult {
+    title: string;
+    url: string;
+    content: string;
+}
+
+/** True when a URL is hosted on an official Indian government domain. */
+export function isGovUrl(url: string | undefined): boolean {
+    if (!url) return false;
+    try {
+        const host = new URL(url).hostname.toLowerCase();
+        return GOV_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Queries asking for current information ("latest", "new", a year, ...).
+ * These go to live web search first: the vector store is a static snapshot
+ * and would otherwise answer them with whatever it held at scrape time.
+ */
+const RECENCY_PATTERN = /\b(latest|newest|new|recent|recently|current|currently|today|this (week|month|year)|update[ds]?|announce[ds]?|announcement|launch(ed)?|deadline|last date|20[2-9]\d)\b|नया|नई|नए|नवीनतम|ताज़ा|ताजा/i;
+
+export function isRecencyQuery(query: string): boolean {
+    return RECENCY_PATTERN.test(query);
+}
+
+// Bare domain suffixes: Tavily's include_domains takes domains, not ".gov.in".
+// The previous [".gov.in", ".nic.in"] made every Tavily search return zero
+// results in production (logs: Tavily called, citations: 0, no error).
+const GOV_DOMAINS = ["gov.in", "nic.in"];
+
 /** What retrieveContext returns, and what the cache stores. */
 export interface RetrievedContext {
     context: string;
@@ -103,7 +136,6 @@ export class RAGEngine {
     private SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || "0.35");
     private LLM_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b"; // llama-3.3-70b-versatile was retired from Groq
     private OLLAMA_MODEL = "llama3.2:3b";
-    private TAVILY_DOMAINS = [".gov.in", ".nic.in"];
 
     constructor() {
         this.vectorStorePath = path.join(process.cwd(), "vector_store");
@@ -211,8 +243,67 @@ export class RAGEngine {
         return result;
     }
 
-    /** Performs the actual retrieval: vector store first, Tavily as fallback. */
+    /**
+     * Live search of official government sites via Tavily.
+     *
+     * Every result is re-checked with isGovUrl, so only .gov.in / .nic.in pages
+     * ever reach the LLM regardless of how Tavily interprets include_domains.
+     * If the domain-restricted search comes back empty, retry unrestricted and
+     * keep only the government hits.
+     */
+    private async searchGovPortals(userMessage: string): Promise<{ context: string; citations: RAGResponse["citations"] } | null> {
+        if (!this.tavilyClient) return null;
+
+        const attempts = [
+            { includeDomains: GOV_DOMAINS, maxResults: 5 },
+            { query: `${userMessage} site:gov.in OR site:nic.in`, maxResults: 10 },
+        ];
+
+        for (const { query, ...options } of attempts) {
+            try {
+                const searchResult = await this.tavilyClient.search(query ?? userMessage, {
+                    searchDepth: "advanced",
+                    ...options,
+                });
+                const results = ((searchResult.results ?? []) as TavilyResult[])
+                    .filter((r) => isGovUrl(r.url) && r.content)
+                    .slice(0, 5);
+
+                log.info("Tavily search completed", {
+                    restricted: Boolean(options.includeDomains),
+                    raw_results: searchResult.results?.length ?? 0,
+                    gov_results: results.length,
+                });
+
+                if (results.length > 0) {
+                    return {
+                        context: results
+                            .map((r) => `Source: ${r.title} (${r.url})\n${r.content}`)
+                            .join("\n\n"),
+                        citations: results.map((r) => ({
+                            title: r.title,
+                            url: r.url,
+                            content: r.content.substring(0, 100) + "...",
+                        })),
+                    };
+                }
+            } catch (err) {
+                console.error("Tavily search error:", err);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Performs the actual retrieval: vector store first, Tavily as fallback.
+     * Recency queries ("latest ...") go to Tavily first instead.
+     */
     private async retrieveUncached(userMessage: string): Promise<RetrievedContext> {
+        if (isRecencyQuery(userMessage)) {
+            const live = await this.searchGovPortals(userMessage);
+            if (live) return { ...live, source: "tavily_search" };
+        }
+
         // Attempt to load VS, but don't block
         await this.initializeVectorStore();
 
@@ -249,26 +340,13 @@ export class RAGEngine {
         }
 
         // 2. Fallback to Tavily if context is empty
-        if (!context && this.tavilyClient) {
-            try {
-                console.log("⚠️ Low confidence or no local results. Falling back to Tavily...");
-                const searchResult = await this.tavilyClient.search(userMessage, {
-                    search_depth: "advanced",
-                    include_domains: this.TAVILY_DOMAINS,
-                    max_results: 3
-                });
-
-                if (searchResult.results && searchResult.results.length > 0) {
-                    context = searchResult.results.map((r: any) => r.content).join("\n\n");
-                    citations = searchResult.results.map((r: any) => ({
-                        title: r.title,
-                        url: r.url,
-                        content: r.content.substring(0, 100) + "..."
-                    }));
-                    source = "tavily_search";
-                }
-            } catch (err) {
-                console.error("Tavily search error:", err);
+        if (!context && this.tavilyClient && !isRecencyQuery(userMessage)) {
+            console.log("⚠️ Low confidence or no local results. Falling back to Tavily...");
+            const live = await this.searchGovPortals(userMessage);
+            if (live) {
+                context = live.context;
+                citations = live.citations;
+                source = "tavily_search";
             }
         }
 
