@@ -15,10 +15,11 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 ## Known issues / ops checklist
 - If login/signup return 500: check `/readyz`. `postgres: down` usually means the Supabase project is paused (restore it) or `DATABASE_URL` is not the Session pooler string.
 - `www.inbridge.in` must be added under Vercel → Settings → Domains or it shows a cert error.
-- `/apply/*` intentionally redirects to `/chat`.
+- The product is intentionally chat-only: `/`, `/services`, `/grievance`, `/status`, `/apply/*` all redirect to `/chat` (only `/services/<slug>` detail pages and `/chat` render). Note `curl -L` hides this — use `curl -I` when checking status codes.
 
 ## Change Log
 ### 2026-11-01 — Pre-showcase audit
 - **Fix**: Grievance form submitted to `http://go-api:8080` (docker-compose hostname, unreachable on Vercel) via a server action with no auth. Replaced with a client-side helper `src/lib/submit-application.ts` that calls `NEXT_PUBLIC_API_URL` with the user's JWT; shows "Please log in" when unauthenticated and handles 401. Removed `src/app/actions.ts`.
-- **Audit (no code change)**: pages `/ /chat /services /grievance /status` return 200; chat streaming works; CORS allows inbridge.in with Authorization header.
+- **Correction**: `GrievanceForm` is currently unreachable (its page redirects to `/chat`), so the fix above is latent and not visible in the live site; it only matters if the grievance page is re-enabled.
+- **Audit (no code change)**: `/chat` and `/services/<slug>` return 200 (other pages redirect, see above); chat streaming works; CORS allows inbridge.in with Authorization header.
 - **Found, requires dashboard action**: backend postgres/redis down on Render (login 500); `www.inbridge.in` missing from Vercel domains.
