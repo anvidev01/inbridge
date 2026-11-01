@@ -56,6 +56,12 @@ export interface SchemePage {
     page: number;
     pageSize: number;
     totalPages: number;
+    /**
+     * True when a search was given but held no usable words (only stopwords
+     * such as "the" or "schemes", or single letters). The result is then
+     * empty rather than the whole dataset, and the UI should say why.
+     */
+    queryTooGeneral: boolean;
 }
 
 export interface SchemeStats {
@@ -208,14 +214,19 @@ export function normaliseScheme(raw: unknown): Scheme | null {
     };
 }
 
-/** Lower-case, strip diacritics and punctuation, collapse spaces — for matching only. */
+/**
+ * Lower-case, strip Latin diacritics and punctuation, collapse spaces — for
+ * matching only. Only U+0300–U+036F (Latin combining accents) are removed;
+ * other combining marks (\p{M}) are kept because in Devanagari they are part
+ * of the word: vowel signs, virama and anusvara ("किसान", "छात्रवृत्ति").
+ */
 export function fold(text: string): string {
     return text
         .normalize('NFKD')
-        .replace(/[̀-ͯ]/g, '')
+        .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
         .replace(/[’‘`']/g, '')
-        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
         .trim();
 }
 
@@ -268,12 +279,19 @@ export function buildIndex(raw: unknown): SchemeIndex {
 const STOPWORDS = new Set([
     'a', 'an', 'and', 'the', 'of', 'for', 'in', 'to', 'on', 'by', 'with', 'is', 'are',
     'scheme', 'schemes', 'yojana', 'what', 'which', 'how', 'me', 'my', 'i',
+    'योजना', 'योजनाएं', 'योजनाएँ', 'के', 'की', 'का', 'लिए', 'में',
 ]);
 
-function queryTerms(q: string): string[] {
-    const all = fold(q).split(' ').filter((t) => t.length > 1 || /\d/.test(t));
-    const useful = all.filter((t) => !STOPWORDS.has(t));
-    return useful.length ? useful : all;
+/**
+ * Search terms from a query: folded words minus stopwords and single letters.
+ * May be empty for a non-empty query ("the", "a", "schemes"); callers must
+ * treat that as "nothing to search for", not as "match everything".
+ */
+export function queryTerms(q: string): string[] {
+    return fold(q)
+        .split(' ')
+        .filter((t) => t.length > 1 || /\d/.test(t))
+        .filter((t) => !STOPWORDS.has(t));
 }
 
 /**
@@ -315,17 +333,29 @@ function matchesFilters(s: Scheme, f: SchemeFilters): boolean {
     return true;
 }
 
-const byName = (a: Scheme, b: Scheme) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
+/** Name for sorting: leading quotes, brackets and other punctuation ignored. */
+export function nameSortKey(name: string): string {
+    return name.replace(/^[^\p{L}\p{N}]+/u, '');
+}
+
+const byName = (a: Scheme, b: Scheme) =>
+    nameSortKey(a.name).localeCompare(nameSortKey(b.name), 'en', { sensitivity: 'base' });
 
 export function searchIndex(index: SchemeIndex, filters: SchemeFilters = {}, page = 1, pageSize = PAGE_SIZE): SchemePage {
-    const terms = filters.q ? queryTerms(filters.q) : [];
-    const phrase = filters.q ? fold(filters.q) : '';
+    const q = filters.q?.trim() ?? '';
+    const hasQuery = q.length > 0;
+    const terms = hasQuery ? queryTerms(q) : [];
+    const phrase = hasQuery ? fold(q) : '';
+    // A query with no usable words matches nothing, rather than everything.
+    const queryTooGeneral = hasQuery && terms.length === 0;
 
     const hits: { scheme: Scheme; score: number }[] = [];
-    for (const entry of index.entries) {
-        if (!matchesFilters(entry.scheme, filters)) continue;
-        const s = terms.length ? score(entry, terms, phrase) : 1;
-        if (s > 0) hits.push({ scheme: entry.scheme, score: s });
+    if (!queryTooGeneral) {
+        for (const entry of index.entries) {
+            if (!matchesFilters(entry.scheme, filters)) continue;
+            const s = hasQuery ? score(entry, terms, phrase) : 1;
+            if (s > 0) hits.push({ scheme: entry.scheme, score: s });
+        }
     }
 
     hits.sort((a, b) => {
@@ -350,7 +380,32 @@ export function searchIndex(index: SchemeIndex, filters: SchemeFilters = {}, pag
         page: current,
         pageSize,
         totalPages,
+        queryTooGeneral,
     };
+}
+
+/**
+ * Other schemes in the same area for the "More in <area>" list, most related
+ * first: same issuer, then same state (or both all-India), then shared tags,
+ * then name (ignoring leading quotes and punctuation).
+ */
+export function rankRelated(target: Scheme, candidates: Scheme[], limit = 3): Scheme[] {
+    const primary = target.categories[0];
+    if (!primary) return [];
+    const targetTags = new Set(target.tags.map((t) => t.toLowerCase()));
+    const sameIssuer = (s: Scheme) => Boolean(target.issuer) && s.issuer === target.issuer;
+    const sameState = (s: Scheme) =>
+        target.allIndia ? s.allIndia : s.states.some((st) => target.states.includes(st));
+    const sharedTags = (s: Scheme) => s.tags.filter((t) => targetTags.has(t.toLowerCase())).length;
+
+    return candidates
+        .filter((s) => s.slug !== target.slug && s.categories.includes(primary))
+        .map((s) => ({ s, issuer: sameIssuer(s) ? 1 : 0, state: sameState(s) ? 1 : 0, tags: sharedTags(s) }))
+        .sort((a, b) =>
+            b.issuer - a.issuer || b.state - a.state || b.tags - a.tags || byName(a.s, b.s)
+        )
+        .slice(0, limit)
+        .map((x) => x.s);
 }
 
 export function computeStats(schemes: Scheme[]): SchemeStats {
@@ -466,6 +521,16 @@ export function getSchemes(filters: SchemeFilters = {}, page = 1): SchemePage {
 
 export function getScheme(slug: string): Scheme | undefined {
     return defaultIndex().bySlug.get(slug);
+}
+
+/** "More in <area>" for a scheme detail page; see rankRelated. */
+export function getRelatedSchemes(scheme: Scheme, limit = 3): Scheme[] {
+    const candidates = scheme.categories[0]
+        ? allSchemes().filter((s) =>
+            scheme.allIndia || appliesToState(s, scheme.states[0] ?? '') || s.issuer === scheme.issuer
+        )
+        : [];
+    return rankRelated(scheme, candidates, limit);
 }
 
 export function getStats(): SchemeStats {

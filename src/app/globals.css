@@ -254,7 +254,7 @@ body {
 }
 
 /* Long URLs / IDs must never cause horizontal scroll at 320px */
-.break-anywhere {
+@utility break-anywhere {
   overflow-wrap: anywhere;
 }
 

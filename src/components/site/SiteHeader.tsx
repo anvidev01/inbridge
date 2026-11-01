@@ -40,7 +40,7 @@ export function SiteHeader({ current }: { current?: NavKey }) {
                             </li>
                         ))}
                     </ul>
-                    <ThemeToggle className="ml-1 w-11 h-11" />
+                    <ThemeToggle className="ml-1" />
                 </nav>
             </div>
         </header>

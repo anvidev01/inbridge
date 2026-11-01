@@ -92,10 +92,19 @@ export default async function ServicesPage({ searchParams }: PageProps) {
 
                     {result.total === 0 ? (
                         <div className="py-12 max-w-xl">
-                            <p className="text-fg">
-                                Nothing in the dataset matches these filters. Try fewer filters or a shorter search,
-                                or ask InBridge — it can also search live government portals.
-                            </p>
+                            {result.queryTooGeneral ? (
+                                <p className="text-fg">
+                                    “<span className="break-anywhere">{filters.q}</span>” is too general to search
+                                    on — words like “the”, “for” or “schemes” and single letters are ignored. Try a
+                                    specific word such as a scheme name, a group (farmers, students) or a need
+                                    (scholarship, pension), or ask InBridge.
+                                </p>
+                            ) : (
+                                <p className="text-fg">
+                                    Nothing in the dataset matches these filters. Try fewer filters or a shorter
+                                    search, or ask InBridge — it can also search live government portals.
+                                </p>
+                            )}
                             <div className="mt-5 flex flex-wrap gap-3">
                                 <Link href="/services" className="inline-flex items-center min-h-11 rounded-lg border border-line px-4 text-sm text-fg hover:bg-surface-2">
                                     Clear filters
