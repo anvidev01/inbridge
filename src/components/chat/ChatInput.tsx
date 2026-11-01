@@ -7,23 +7,61 @@ import { FOCUS_CATEGORIES, LANGUAGES, isFocus, type ChatMode, type Focus, type L
 import { DISCLAIMER } from '@/lib/site';
 import { findPii, maskPii, type PiiKind } from '@/lib/pii-client';
 
+type FocusCategory = (typeof FOCUS_CATEGORIES)[number];
+
 /** Short, friendly labels for the myScheme categories the server filters on. */
-const FOCUS_LABELS: Record<(typeof FOCUS_CATEGORIES)[number], string> = {
-    'Social welfare & Empowerment': 'Social welfare',
-    'Education & Learning': 'Education',
-    'Agriculture,Rural & Environment': 'Farming & rural',
-    'Business & Entrepreneurship': 'Business',
-    'Women and Child': 'Women & children',
-    'Skills & Employment': 'Jobs & skills',
-    'Banking,Financial Services and Insurance': 'Banking & insurance',
-    'Health & Wellness': 'Health',
-    'Sports & Culture': 'Sports & culture',
-    'Housing & Shelter': 'Housing',
-    'Science, IT & Communications': 'Science & IT',
-    'Transport & Infrastructure': 'Transport',
-    'Travel & Tourism': 'Travel & tourism',
-    'Utility & Sanitation': 'Utilities & sanitation',
-    'Public Safety,Law & Justice': 'Law & justice',
+export const FOCUS_LABELS: Record<Language, Record<FocusCategory, string>> = {
+    en: {
+        'Social welfare & Empowerment': 'Social welfare',
+        'Education & Learning': 'Education',
+        'Agriculture,Rural & Environment': 'Farming & rural',
+        'Business & Entrepreneurship': 'Business',
+        'Women and Child': 'Women & children',
+        'Skills & Employment': 'Jobs & skills',
+        'Banking,Financial Services and Insurance': 'Banking & insurance',
+        'Health & Wellness': 'Health',
+        'Sports & Culture': 'Sports & culture',
+        'Housing & Shelter': 'Housing',
+        'Science, IT & Communications': 'Science & IT',
+        'Transport & Infrastructure': 'Transport',
+        'Travel & Tourism': 'Travel & tourism',
+        'Utility & Sanitation': 'Utilities & sanitation',
+        'Public Safety,Law & Justice': 'Law & justice',
+    },
+    hi: {
+        'Social welfare & Empowerment': 'समाज कल्याण',
+        'Education & Learning': 'शिक्षा',
+        'Agriculture,Rural & Environment': 'खेती और गाँव',
+        'Business & Entrepreneurship': 'व्यापार',
+        'Women and Child': 'महिला और बच्चे',
+        'Skills & Employment': 'नौकरी और हुनर',
+        'Banking,Financial Services and Insurance': 'बैंक और बीमा',
+        'Health & Wellness': 'स्वास्थ्य',
+        'Sports & Culture': 'खेल और संस्कृति',
+        'Housing & Shelter': 'घर',
+        'Science, IT & Communications': 'विज्ञान और IT',
+        'Transport & Infrastructure': 'परिवहन',
+        'Travel & Tourism': 'यात्रा और पर्यटन',
+        'Utility & Sanitation': 'बिजली, पानी और सफ़ाई',
+        'Public Safety,Law & Justice': 'कानून और न्याय',
+    },
+    hinglish: {
+        'Social welfare & Empowerment': 'Social welfare',
+        'Education & Learning': 'Padhai',
+        'Agriculture,Rural & Environment': 'Kheti aur gaon',
+        'Business & Entrepreneurship': 'Business',
+        'Women and Child': 'Mahila aur bachche',
+        'Skills & Employment': 'Naukri aur skills',
+        'Banking,Financial Services and Insurance': 'Bank aur insurance',
+        'Health & Wellness': 'Health',
+        'Sports & Culture': 'Sports aur culture',
+        'Housing & Shelter': 'Ghar',
+        'Science, IT & Communications': 'Science aur IT',
+        'Transport & Infrastructure': 'Transport',
+        'Travel & Tourism': 'Travel aur tourism',
+        'Utility & Sanitation': 'Bijli, paani aur safai',
+        'Public Safety,Law & Justice': 'Kanoon aur nyay',
+    },
 };
 
 type VoiceError = 'denied' | 'no-speech' | 'no-mic' | 'network' | 'other';
@@ -161,10 +199,17 @@ function voiceErrorKind(code: string): VoiceError | null {
     return 'other';
 }
 
-function joinText(base: string, addition: string): string {
+export function joinText(base: string, addition: string): string {
     if (!addition) return base;
     if (!base) return addition;
     return /\s$/.test(base) ? base + addition : `${base} ${addition}`;
+}
+
+/** Composer text for a dictation result: what was in the box when the utterance began, plus the words so far. */
+export function dictationText(base: string, results: SpeechResultList): string {
+    let transcript = '';
+    for (let i = 0; i < results.length; i++) transcript += results[i][0].transcript;
+    return joinText(base, transcript.trim());
 }
 
 const MAX_TEXTAREA_PX = 168; // about 6 lines at 16px / 1.6
@@ -199,13 +244,34 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
         el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_PX)}px`;
     }, [value, textareaRef]);
 
+    // Current composer text for the dictation callbacks, which outlive a render.
+    const valueRef = useRef(value);
+    useLayoutEffect(() => { valueRef.current = value; }, [value]);
+
+    /**
+     * Drop the recogniser without letting it write again. stop() still delivers
+     * a final `result` event, which would put already-sent text back in the box,
+     * so the handlers are detached and the session aborted.
+     */
+    const cancelDictation = useCallback(() => {
+        const recognition = recognitionRef.current;
+        if (!recognition) return;
+        recognitionRef.current = null;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.abort();
+        setIsListening(false);
+    }, []);
+
     // Stop the mic if the composer unmounts mid-dictation.
-    useEffect(() => () => recognitionRef.current?.abort(), []);
+    useEffect(() => cancelDictation, [cancelDictation]);
 
     const pii = useMemo(() => findPii(value), [value]);
     const piiKinds = [...new Set(pii.map((m) => m.kind))];
 
     /* ── Voice ── */
+    /** The user's own mic-off toggle: stop() so the words already spoken are kept. */
     const stopListening = useCallback(() => {
         recognitionRef.current?.stop();
     }, []);
@@ -214,34 +280,43 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
         const SpeechAPI = getSpeechAPI();
         if (!SpeechAPI) return;
         setVoiceError(null);
-        const base = value; // dictation is appended to whatever is already typed
+        // Dictation is appended to what is in the box when the first words arrive.
+        let base: string | null = null;
         const recognition = new SpeechAPI();
         recognition.lang = LANGUAGES.find((l) => l.code === language)?.speechLang ?? 'en-IN';
         recognition.interimResults = true; // show words as they are recognised
         recognition.continuous = false;
         recognition.onresult = (event) => {
-            let transcript = '';
-            for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
-            onChange(joinText(base, transcript.trim()));
+            if (base === null) base = valueRef.current;
+            const next = dictationText(base, event.results);
+            valueRef.current = next;
+            onChange(next);
         };
         recognition.onerror = (event) => setVoiceError(voiceErrorKind(event.error));
         recognition.onend = () => {
+            if (recognitionRef.current === recognition) recognitionRef.current = null;
             setIsListening(false);
-            recognitionRef.current = null;
         };
         recognitionRef.current = recognition;
         try {
             recognition.start();
             setIsListening(true);
         } catch {
+            recognitionRef.current = null;
             setVoiceError('other');
         }
-    }, [value, language, onChange]);
+    }, [language, onChange]);
+
+    /** Typing while the mic is on ends dictation, so the next result can't overwrite the edit. */
+    const handleTyped = (text: string) => {
+        if (recognitionRef.current) cancelDictation();
+        onChange(text);
+    };
 
     /* ── Send / stop ── */
     const send = () => {
         if (busy || !value.trim()) return;
-        if (isListening) stopListening();
+        cancelDictation();
         onSend(value);
     };
 
@@ -253,7 +328,8 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
         }
     };
 
-    const focusLabel = focus === 'all' ? copy.topic : FOCUS_LABELS[focus];
+    const focusLabels = FOCUS_LABELS[language];
+    const focusLabel = focus === 'all' ? copy.topic : focusLabels[focus];
 
     return (
         <div className="w-full flex flex-col gap-2">
@@ -268,7 +344,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                     id="chat-composer"
                     ref={textareaRef}
                     value={value}
-                    onChange={(e) => onChange(e.target.value)}
+                    onChange={(e) => handleTyped(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={isListening ? copy.listening : mode === 'grievance' ? copy.placeholderGrievance : copy.placeholder}
                     rows={1}
@@ -293,7 +369,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base bg-surface text-fg"
                         >
                             <option value="all">{copy.allTopics}</option>
-                            {FOCUS_CATEGORIES.map((c) => <option key={c} value={c}>{FOCUS_LABELS[c]}</option>)}
+                            {FOCUS_CATEGORIES.map((c) => <option key={c} value={c}>{focusLabels[c]}</option>)}
                         </select>
                     </div>
                     {focus !== 'all' && (
@@ -361,23 +437,26 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                 </div>
             </div>
 
-            {pii.length > 0 && (
-                <div id="composer-pii" role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm text-danger">
-                    <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span className="flex-1 min-w-[12rem]">{copy.piiWarning(piiKinds.map((k) => copy.pii[k]).join(' / '))}</span>
-                    <button
-                        type="button"
-                        onClick={() => { onChange(maskPii(value)); textareaRef.current?.focus(); }}
-                        className="min-h-11 px-4 rounded-full border border-danger/40 font-medium hover:bg-surface-2"
-                    >
-                        {copy.mask}
-                    </button>
-                </div>
-            )}
+            {/* Live regions stay mounted (empty when idle) so screen readers announce text added to them. */}
+            <div id="composer-pii" role="status" aria-live="polite" className="empty:-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm text-danger">
+                {pii.length > 0 && (
+                    <>
+                        <ShieldAlert className="w-4 h-4 shrink-0" aria-hidden="true" />
+                        <span className="flex-1 min-w-[12rem]">{copy.piiWarning(piiKinds.map((k) => copy.pii[k]).join(' / '))}</span>
+                        <button
+                            type="button"
+                            onClick={() => { cancelDictation(); onChange(maskPii(value)); textareaRef.current?.focus(); }}
+                            className="min-h-11 px-4 rounded-full border border-danger/40 font-medium hover:bg-surface-2"
+                        >
+                            {copy.mask}
+                        </button>
+                    </>
+                )}
+            </div>
 
-            {voiceError && (
-                <p role="status" className="px-1 text-sm text-muted">{copy.voiceErrors[voiceError]}</p>
-            )}
+            <p role="status" aria-live="polite" className="empty:-mt-2 px-1 text-sm text-muted">
+                {voiceError ? copy.voiceErrors[voiceError] : null}
+            </p>
 
             <p className="px-1 text-[13px] leading-relaxed text-muted text-center">
                 {DISCLAIMER[language]}{' '}

@@ -6,11 +6,21 @@
  * device."). The pure functions at the top are unit-tested; the store at the
  * bottom wraps them for React's useSyncExternalStore.
  */
-import type { InBridgeUIMessage } from './chat/protocol';
+import type { InBridgeUIMessage, Language } from './chat/protocol';
 
 export const HISTORY_KEY = 'inbridge_threads_v1';
 export const MAX_THREADS = 50;
-export const HISTORY_NOTE = 'Saved only on this device.';
+export const HISTORY_NOTE: Record<Language, string> = {
+    en: 'Saved only on this device.',
+    hi: 'सिर्फ़ इसी डिवाइस पर सेव होता है।',
+    hinglish: 'Sirf isi device par save hota hai.',
+};
+
+/**
+ * Per-answer state written by the answer renderer (feedback given, checklist
+ * ticks), keyed `<prefix><messageId>`. Clearing history removes these too.
+ */
+export const ANSWER_STATE_PREFIXES = ['inbridge_feedback:', 'inbridge_checklist:'] as const;
 const TITLE_MAX = 60;
 const DEFAULT_TITLE = 'New thread';
 
@@ -29,6 +39,12 @@ export interface StorageLike {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
     removeItem(key: string): void;
+}
+
+/** Storage that can also list its keys (window.localStorage does). */
+export interface KeyedStorageLike extends StorageLike {
+    readonly length: number;
+    key(index: number): string | null;
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────
@@ -157,7 +173,44 @@ export function groupThreads(threads: Thread[], now: number = Date.now()): Threa
         .map((key) => ({ key, threads: buckets[key] }));
 }
 
+/**
+ * Which stored keys hold per-answer state. With `messageIds`, only the state of
+ * those messages; without, all of it.
+ */
+export function answerStateKeys(keys: readonly string[], messageIds?: readonly string[]): string[] {
+    const ids = messageIds ? new Set(messageIds) : null;
+    return keys.filter((key) => {
+        const prefix = ANSWER_STATE_PREFIXES.find((p) => key.startsWith(p));
+        if (!prefix) return false;
+        return ids ? ids.has(key.slice(prefix.length)) : true;
+    });
+}
+
 // ── Storage I/O (guarded) ─────────────────────────────────────────────────
+
+function listKeys(storage: KeyedStorageLike): string[] {
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (key !== null) keys.push(key);
+    }
+    return keys;
+}
+
+/**
+ * Remove per-answer state (feedback, checklist ticks). Never throws. Returns
+ * the number of keys removed.
+ */
+export function removeAnswerState(storage: KeyedStorageLike | null, messageIds?: readonly string[]): number {
+    if (!storage) return 0;
+    try {
+        const keys = answerStateKeys(listKeys(storage), messageIds);
+        keys.forEach((key) => storage.removeItem(key));
+        return keys.length;
+    } catch {
+        return 0;
+    }
+}
 
 export function readThreads(storage: StorageLike | null): Thread[] {
     if (!storage) return [];
@@ -194,7 +247,7 @@ const EMPTY: Thread[] = [];
 const listeners = new Set<() => void>();
 let cache: Thread[] | null = null;
 
-function browserStorage(): StorageLike | null {
+function browserStorage(): KeyedStorageLike | null {
     try {
         return typeof window === 'undefined' ? null : window.localStorage;
     } catch {
@@ -247,10 +300,17 @@ export function renameStoredThread(id: string, title: string): boolean {
     return commit(renameThread(readThreads(browserStorage()), id, title));
 }
 
+/** Delete one thread and the per-answer state of its messages. */
 export function deleteStoredThread(id: string): boolean {
-    return commit(deleteThread(readThreads(browserStorage()), id));
+    const storage = browserStorage();
+    const threads = readThreads(storage);
+    const gone = threads.find((t) => t.id === id);
+    if (gone) removeAnswerState(storage, gone.messages.map((m) => m.id));
+    return commit(deleteThread(threads, id));
 }
 
+/** Clear all history, including every answer's feedback and checklist state. */
 export function clearStoredThreads(): boolean {
+    removeAnswerState(browserStorage());
     return commit([]);
 }

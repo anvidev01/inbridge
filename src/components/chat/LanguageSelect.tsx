@@ -45,6 +45,13 @@ export function useLanguagePreference(): [Language, (lang: Language) => void] {
     return [language, setLanguage];
 }
 
+/** Accessible name of the picker, in the language currently chosen. */
+const PICKER_LABEL: Record<Language, string> = {
+    en: 'Answer language',
+    hi: 'उत्तर की भाषा',
+    hinglish: 'Answer ki bhasha',
+};
+
 interface LanguageSelectProps {
     value: Language;
     onChange: (lang: Language) => void;
@@ -66,8 +73,8 @@ export function LanguageSelect({ value, onChange }: LanguageSelectProps) {
             <select
                 value={value}
                 onChange={(e) => { if (isLanguage(e.target.value)) onChange(e.target.value); }}
-                aria-label="Answer language"
-                title="Answer language"
+                aria-label={PICKER_LABEL[value]}
+                title={PICKER_LABEL[value]}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base bg-surface text-fg"
             >
                 {LANGUAGES.map((l) => (

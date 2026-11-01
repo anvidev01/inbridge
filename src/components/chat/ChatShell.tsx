@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
@@ -27,6 +27,38 @@ const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === 'true';
 const SIDEBAR_ID = 'inbridge-sidebar';
 const MAX_PREFILL = 500;
 
+interface StatusCopy { busy: string; ready: string; stopped: string }
+
+/** How the last request made in this session ended, for the sr-only status line. */
+export type Outcome = 'none' | 'ready' | 'stopped';
+
+/**
+ * Errors are 'none': ErrorCard's role="alert" already announces them, so the
+ * status line stays quiet instead of reading the failure twice.
+ */
+export function outcomeOfFinish(finish: { isAbort: boolean; isError: boolean; isDisconnect: boolean }): Outcome {
+    if (finish.isError || finish.isDisconnect) return 'none';
+    if (finish.isAbort) return 'stopped';
+    return 'ready';
+}
+
+/** The polite status line: busy while a request runs, then the outcome of that request only. */
+export function statusAnnouncement(copy: StatusCopy, busy: boolean, outcome: Outcome): string {
+    if (busy) return copy.busy;
+    if (outcome === 'ready') return copy.ready;
+    if (outcome === 'stopped') return copy.stopped;
+    return '';
+}
+
+/**
+ * Which thread (if any) to save when leaving it. Only an in-flight request's
+ * thread is saved, and only when saving was not opted out of (delete / clear).
+ */
+export function threadToSaveOnLeave(requestThreadId: string | null, busy: boolean, messageCount: number, save: boolean): string | null {
+    if (!save || !busy || !requestThreadId || messageCount === 0) return null;
+    return requestThreadId;
+}
+
 const COPY: Record<Language, {
     heading: string;
     sub: string;
@@ -35,7 +67,7 @@ const COPY: Record<Language, {
     newThread: string;
     openMenu: string;
     starters: { title: string; query: string }[];
-    status: { busy: string; ready: string; error: string };
+    status: StatusCopy;
 }> = {
     en: {
         heading: 'Ask about government schemes and services',
@@ -50,7 +82,7 @@ const COPY: Record<Language, {
             { title: 'Aadhaar address update', query: 'How do I update the address on my Aadhaar card online?' },
             { title: 'Ayushman card', query: 'How do I get an Ayushman card and check if my family is eligible?' },
         ],
-        status: { busy: 'InBridge is preparing an answer.', ready: 'Answer ready.', error: 'The answer could not be completed.' },
+        status: { busy: 'InBridge is preparing an answer.', ready: 'Answer ready.', stopped: 'Answer stopped.' },
     },
     hi: {
         heading: 'सरकारी योजनाओं और सेवाओं के बारे में पूछें',
@@ -65,7 +97,7 @@ const COPY: Record<Language, {
             { title: 'आधार में पता बदलना', query: 'आधार कार्ड में पता ऑनलाइन कैसे बदलें?' },
             { title: 'आयुष्मान कार्ड', query: 'आयुष्मान कार्ड कैसे बनवाएँ और कैसे जाँचें कि मेरा परिवार पात्र है या नहीं?' },
         ],
-        status: { busy: 'InBridge उत्तर तैयार कर रहा है।', ready: 'उत्तर तैयार है।', error: 'उत्तर पूरा नहीं हो सका।' },
+        status: { busy: 'InBridge उत्तर तैयार कर रहा है।', ready: 'उत्तर तैयार है।', stopped: 'उत्तर रोक दिया गया।' },
     },
     hinglish: {
         heading: 'Sarkari schemes aur services ke baare mein poochhein',
@@ -80,7 +112,7 @@ const COPY: Record<Language, {
             { title: 'Aadhaar address update', query: 'Aadhaar card mein address online kaise update karein?' },
             { title: 'Ayushman card', query: 'Ayushman card kaise banwayein aur kaise check karein ki meri family eligible hai?' },
         ],
-        status: { busy: 'InBridge answer taiyaar kar raha hai.', ready: 'Answer taiyaar hai.', error: 'Answer poora nahi ho saka.' },
+        status: { busy: 'InBridge answer taiyaar kar raha hai.', ready: 'Answer taiyaar hai.', stopped: 'Answer rok diya gaya.' },
     },
 };
 
@@ -107,6 +139,8 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
     const [focus, setFocus] = useState<Focus>('all');
     const [phase, setPhase] = useState<PhaseData | null>(null);
     const [session, setSession] = useState<Session>(() => ({ id: newThreadId(), initial: [] }));
+    const [outcome, setOutcome] = useState<Outcome>('none');
+    const [saveFailed, setSaveFailed] = useState(false);
 
     const threads = useSyncExternalStore(subscribeThreads, getThreadsSnapshot, getServerThreadsSnapshot);
     const isDesktop = useIsDesktop();
@@ -146,20 +180,34 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                 });
             }
         },
-        onFinish: ({ messages: finished }) => {
+        onFinish: ({ messages: finished, isAbort, isError, isDisconnect }) => {
             setPhase(null);
             const threadId = requestThreadRef.current;
             requestThreadRef.current = null;
-            if (threadId && finished.length > 0) saveThread(threadId, finished);
+            // null: the user left, deleted or cleared this thread mid-answer. Don't save or announce.
+            if (!threadId) return;
+            setOutcome(outcomeOfFinish({ isAbort, isError, isDisconnect }));
+            if (finished.length > 0) setSaveFailed(!saveThread(threadId, finished));
         },
     });
 
     const busy = status === 'submitted' || status === 'streaming';
     const empty = messages.length === 0;
 
-    // <html lang> follows the answer language.
+    // Latest values for callbacks that must keep a stable identity while tokens stream.
+    const messagesRef = useRef(messages);
+    const busyRef = useRef(busy);
+    useLayoutEffect(() => {
+        messagesRef.current = messages;
+        busyRef.current = busy;
+    });
+
+    // <html lang> follows the answer language; put back what was there when leaving /chat.
     useEffect(() => {
-        document.documentElement.lang = LANGUAGES.find((l) => l.code === language)?.htmlLang ?? 'en-IN';
+        const root = document.documentElement;
+        const previous = root.lang;
+        root.lang = LANGUAGES.find((l) => l.code === language)?.htmlLang ?? 'en-IN';
+        return () => { root.lang = previous || 'en-IN'; };
     }, [language]);
 
     // Restore a previous login (only when auth is enabled).
@@ -182,20 +230,26 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
         el.setSelectionRange(el.value.length, el.value.length);
     }, []);
 
-    /** Leave the current thread. A partial answer is saved before its stream is stopped. */
-    const leaveThread = useCallback(() => {
-        if (busy) {
-            const threadId = requestThreadRef.current;
+    /**
+     * Leave the current thread. By default a partial answer is saved before its
+     * stream is stopped; `save: false` (delete / clear all) stops without saving.
+     */
+    const leaveThread = useCallback(({ save = true }: { save?: boolean } = {}) => {
+        const messagesNow = messagesRef.current;
+        const threadId = threadToSaveOnLeave(requestThreadRef.current, busyRef.current, messagesNow.length, save);
+        if (busyRef.current) {
+            // Detach first, so the aborted request's onFinish neither saves nor announces.
             requestThreadRef.current = null;
-            if (threadId && messages.length > 0) saveThread(threadId, messages);
             void stop();
         }
+        if (threadId) setSaveFailed(!saveThread(threadId, messagesNow));
         setPhase(null);
+        setOutcome('none');
         clearError();
-    }, [busy, messages, stop, clearError]);
+    }, [stop, clearError]);
 
-    const startNewThread = useCallback(() => {
-        leaveThread();
+    const startNewThread = useCallback((options?: { save?: boolean }) => {
+        leaveThread(options);
         setSession({ id: newThreadId(), initial: [] });
         setMode('default');
         // The draft in the composer is kept on purpose.
@@ -210,12 +264,15 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
 
     const handleDeleteThread = useCallback((id: string) => {
         deleteStoredThread(id);
-        if (id === session.id) startNewThread();
+        // save: false stops a streaming answer without writing the deleted thread back.
+        if (id === session.id) startNewThread({ save: false });
     }, [session.id, startNewThread]);
 
     const handleClearThreads = useCallback(() => {
         clearStoredThreads();
-        startNewThread();
+        setSaveFailed(false);
+        // Clear all is a privacy control: the in-flight thread must not be re-saved either.
+        startNewThread({ save: false });
     }, [startNewThread]);
 
     const send = useCallback((text: string) => {
@@ -223,6 +280,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
         if (!trimmed || busy) return;
         requestThreadRef.current = session.id;
         setPhase(null);
+        setOutcome('none');
         setInput('');
         void sendMessage({ text: trimmed }, { body: extras });
     }, [busy, session.id, sendMessage, extras]);
@@ -231,8 +289,12 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
         if (busy) return;
         requestThreadRef.current = session.id;
         setPhase(null);
+        setOutcome('none');
         void regenerate({ body: extras });
     }, [busy, session.id, regenerate, extras]);
+
+    // Click handlers pass an event; never let it reach startNewThread's options.
+    const newThreadButton = useCallback(() => startNewThread(), [startNewThread]);
 
     const fillComposer = useCallback((query: string) => {
         setInput(query);
@@ -267,10 +329,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
     }, [busy, sidebarOpen, loginOpen, startNewThread, stop]);
 
     // One polite announcement per state change, instead of a live region on the whole log.
-    let statusText = '';
-    if (busy) statusText = copy.status.busy;
-    else if (status === 'error') statusText = copy.status.error;
-    else if (!empty && messages[messages.length - 1].role === 'assistant') statusText = copy.status.ready;
+    const statusText = statusAnnouncement(copy.status, busy, outcome);
 
     const drawerOpenOnMobile = sidebarOpen && !isDesktop;
 
@@ -280,13 +339,15 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                 id={SIDEBAR_ID}
                 isOpen={sidebarOpen}
                 onClose={closeSidebar}
+                language={language}
                 threads={threads}
+                saveFailed={saveFailed}
                 currentThreadId={session.id}
                 onSelectThread={openThread}
                 onRenameThread={renameStoredThread}
                 onDeleteThread={handleDeleteThread}
                 onClearThreads={handleClearThreads}
-                onNewThread={startNewThread}
+                onNewThread={newThreadButton}
                 onStarter={fillComposer}
                 onDraftComplaint={draftComplaint}
                 authEnabled={AUTH_ENABLED}
@@ -324,12 +385,13 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                         <ThemeToggle />
                         <button
                             type="button"
-                            onClick={startNewThread}
+                            onClick={newThreadButton}
+                            aria-label={copy.newThread}
+                            title={copy.newThread}
                             aria-keyshortcuts="Control+Shift+O Meta+Shift+O"
-                            className="inline-flex items-center justify-center gap-2 min-w-11 h-11 px-3 rounded-full bg-fg text-bg text-sm font-medium hover:opacity-90 transition-opacity"
+                            className="inline-flex items-center justify-center w-11 h-11 rounded-full border border-line text-muted hover:text-fg hover:bg-surface-2 transition-colors"
                         >
-                            <SquarePen className="w-4 h-4" aria-hidden="true" />
-                            <span className="sr-only sm:not-sr-only">{copy.newThread}</span>
+                            <SquarePen className="w-[18px] h-[18px]" aria-hidden="true" />
                         </button>
                     </div>
                 </header>
