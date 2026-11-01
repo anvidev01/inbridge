@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Check, CircleAlert, Pencil, Trash2, X } from 'lucide-react';
-import { HISTORY_NOTE, groupThreads, type Thread, type ThreadGroupKey } from '@/lib/history';
+import { DEFAULT_TITLE, HISTORY_NOTE, groupThreads, type Thread, type ThreadGroupKey } from '@/lib/history';
 import type { Language } from '@/lib/chat/protocol';
 
 interface ThreadListCopy {
@@ -17,6 +17,7 @@ interface ThreadListCopy {
     saveName: string;
     deleteConfirm: string;
     cancelDelete: string;
+    untitled: string;
     rename: (title: string) => string;
     remove: (title: string) => string;
 }
@@ -34,6 +35,7 @@ export const THREAD_LIST_COPY: Record<Language, ThreadListCopy> = {
         saveName: 'Save name',
         deleteConfirm: 'Delete?',
         cancelDelete: 'Cancel delete',
+        untitled: 'New thread',
         rename: (t) => `Rename “${t}”`,
         remove: (t) => `Delete “${t}”`,
     },
@@ -49,6 +51,7 @@ export const THREAD_LIST_COPY: Record<Language, ThreadListCopy> = {
         saveName: 'नाम सेव करें',
         deleteConfirm: 'मिटाएँ?',
         cancelDelete: 'मिटाना रद्द करें',
+        untitled: 'नई बातचीत',
         rename: (t) => `“${t}” का नाम बदलें`,
         remove: (t) => `“${t}” मिटाएँ`,
     },
@@ -64,6 +67,7 @@ export const THREAD_LIST_COPY: Record<Language, ThreadListCopy> = {
         saveName: 'Naam save karein',
         deleteConfirm: 'Delete karein?',
         cancelDelete: 'Delete cancel karein',
+        untitled: 'Nayi baatcheet',
         rename: (t) => `“${t}” ka naam badlein`,
         remove: (t) => `“${t}” delete karein`,
     },
@@ -176,7 +180,7 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
                                             aria-current={active ? 'page' : undefined}
                                             className={`flex-1 min-w-0 min-h-11 px-3 text-left text-sm truncate ${active ? 'text-fg font-medium' : 'text-muted hover:text-fg'}`}
                                         >
-                                            {t.title}
+                                            {t.title === DEFAULT_TITLE ? copy.untitled : t.title}
                                         </button>
                                         {confirmDeleteId === t.id ? (
                                             <>
@@ -190,10 +194,10 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
                                         ) : (
                                             // Always visible on touch screens; on desktop they appear on hover or keyboard focus.
                                             <span className="flex lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 transition-opacity">
-                                                <button type="button" onClick={() => startRename(t)} aria-label={copy.rename(t.title)} className={iconButton}>
+                                                <button type="button" onClick={() => startRename(t)} aria-label={copy.rename(t.title === DEFAULT_TITLE ? copy.untitled : t.title)} className={iconButton}>
                                                     <Pencil className="w-4 h-4" aria-hidden="true" />
                                                 </button>
-                                                <button type="button" onClick={() => setConfirmDeleteId(t.id)} aria-label={copy.remove(t.title)} className={iconButton}>
+                                                <button type="button" onClick={() => setConfirmDeleteId(t.id)} aria-label={copy.remove(t.title === DEFAULT_TITLE ? copy.untitled : t.title)} className={iconButton}>
                                                     <Trash2 className="w-4 h-4" aria-hidden="true" />
                                                 </button>
                                             </span>

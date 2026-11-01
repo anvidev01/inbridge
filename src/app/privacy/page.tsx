@@ -78,7 +78,8 @@ export default function PrivacyPage() {
                     to us. The storage keys are <code>inbridge_threads_v1</code> (chat history),{' '}
                     <code>inbridge_language</code>, <code>inbridge_onboarding_v1</code>, <code>inbridge_theme</code>,{' '}
                     <code>inbridge_feedback:*</code> (which answers you rated) and <code>inbridge_checklist:*</code>{' '}
-                    (ticked checklist items).
+                    (ticked checklist items). If sign-in is enabled (it is currently off),{' '}
+                    <code>inbridge_token</code> and <code>inbridge_user</code> also hold your sign-in session.
                 </li>
                 <li>
                     <strong>Kept:</strong> until you delete it (see &ldquo;How to delete your data&rdquo; below).

@@ -3,10 +3,19 @@
 /**
  * app/global-error.tsx — last-resort boundary for errors in the root layout
  * Replaces the root layout, so it renders its own <html>/<body>. The theme
- * bootstrap and next/font do not run here: :root dark tokens and the font
- * fallbacks in globals.css apply.
+ * bootstrap and next/font do not run here, so :root dark tokens apply and the
+ * font variables globals.css expects (--font-inter etc.) are defined inline on
+ * <html> with system fallbacks; otherwise --font-sans/--font-serif would be
+ * invalid and text would render in the browser default serif.
  */
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
+
+const FALLBACK_FONTS = {
+  "--font-inter": 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  "--font-noto-deva": '"Noto Sans Devanagari", "Nirmala UI", sans-serif',
+  "--font-source-serif": 'Georgia, "Times New Roman", serif',
+  "--font-noto-serif-deva": '"Noto Serif Devanagari", serif',
+} as CSSProperties;
 import "./globals.css";
 
 export default function GlobalError({
@@ -22,7 +31,7 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html lang="en-IN" data-theme="dark">
+    <html lang="en-IN" data-theme="dark" style={FALLBACK_FONTS}>
       <head>
         <title>Something went wrong · InBridge</title>
       </head>

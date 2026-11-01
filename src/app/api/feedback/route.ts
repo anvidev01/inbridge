@@ -33,9 +33,9 @@ export async function POST(req: Request) {
     try {
         language = feedbackLanguage(req.url, req.headers.get('accept-language'));
 
-        // Reject by declared size before reading, so an oversized POST is
-        // never buffered. The length re-check below covers a missing or
-        // understated content-length.
+        // Reject by declared size before reading, so an honest oversized POST
+        // is not buffered. A chunked or understated body is still read in full
+        // and then rejected by the byte-length check below.
         const declaredLength = Number(req.headers.get('content-length') || 0);
         if (declaredLength > MAX_BODY_BYTES) return errorResponse('bad_request', 400, language);
 
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
         if (!rateLimit.success) return errorResponse('rate_limited', 429, language);
 
         const raw = await req.text();
-        if (raw.length > MAX_BODY_BYTES) return errorResponse('bad_request', 400, language);
+        if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return errorResponse('bad_request', 400, language);
 
         let body: unknown;
         try {

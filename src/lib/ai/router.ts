@@ -170,8 +170,12 @@ export async function routeChatStream(
             if (input.signal?.aborted) throw error;
 
             const kind = error instanceof FirstTokenTimeout ? 'timeout' : classifyError(error);
-            options.telemetry?.llmError(provider, Date.now() - started, kind);
-            log.warn('LLM provider failed before first token', { provider, kind, error });
+            // A timeout that only fired because the request's own deadline
+            // shortened the wait says nothing about the provider's health, so
+            // it is not reported to telemetry (which feeds the circuit breakers).
+            const cutByDeadline = error instanceof FirstTokenTimeout && timeoutMs < deps.firstTokenTimeoutMs;
+            if (!cutByDeadline) options.telemetry?.llmError(provider, Date.now() - started, kind);
+            log.warn('LLM provider failed before first token', { provider, kind, cut_by_deadline: cutByDeadline, error });
 
             const next = chain[i + 1];
             if (next) options.telemetry?.failover(provider, next, kind);

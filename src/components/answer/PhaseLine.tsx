@@ -37,7 +37,8 @@ export function PhaseLine({ phase, strings, pending = false }: PhaseLineProps) {
     useEffect(() => {
         if (!phase) return;
         if (shown && shown.phase === phase.phase && shown.count === phase.count) return;
-        const wait = shown ? Math.max(0, MIN_PHASE_MS - (Date.now() - shownAt.current)) : 0;
+        // First fill waits 100ms so assistive tech has registered the (empty) live region.
+        const wait = shown ? Math.max(0, MIN_PHASE_MS - (Date.now() - shownAt.current)) : 100;
         const timer = setTimeout(() => {
             shownAt.current = Date.now();
             setShown(phase);

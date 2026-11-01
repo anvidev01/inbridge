@@ -65,7 +65,7 @@ export const SIDEBAR_COPY: Record<Language, SidebarCopy> = {
         menu: 'InBridge मेन्यू',
         tagline: 'सरकारी योजनाओं की स्वतंत्र जानकारी',
         closeMenu: 'मेन्यू बंद करें',
-        actions: 'काम',
+        actions: 'विकल्प',
         newThread: 'नई बातचीत',
         browse: 'योजनाएँ देखें',
         complaint: 'शिकायत लिखें',

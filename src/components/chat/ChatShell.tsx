@@ -381,7 +381,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                     <span className="lg:hidden max-[359px]:hidden text-xl font-bold font-serif tracking-tight">InBridge</span>
 
                     <div className="ml-auto flex items-center gap-1 sm:gap-2">
-                        <LanguageSelect value={language} onChange={setLanguage} />
+                        <LanguageSelect value={language} onChange={(next) => { setLanguage(next); setOutcome('none'); }} />
                         <ThemeToggle />
                         <button
                             type="button"

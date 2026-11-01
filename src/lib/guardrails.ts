@@ -91,6 +91,12 @@ const PAN_PATTERN = /\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b/gi;
 // lookbehind: the TS target is ES2017).
 const PHONE_PATTERN = /(^|[^\d+])((?:\+?91[\s-]?|0)[6-9]\d{4}[\s-]?\d{5}|[6-9]\d{9})(?!\d)/g;
 
+// A bare 5+5 split ("98765 43210") is how most people write a mobile number,
+// so it IS a phone number when a phone word sits just before it ("my number is
+// 98765 43210", "whatsapp 98765-43210"). Income ranges have no such word.
+// (\b is ASCII-only without the u flag, so the Devanagari words get their own branch.)
+const CONTEXT_PHONE_PATTERN = /((?:\b(?:phone|mobile|mob|number|no\.?|call|whatsapp|contact)\b|फ़ोन|फोन|मोबाइल|नंबर)[^\d]{0,15})([6-9]\d{4}[\s-]\d{5})(?!\d)/gi;
+
 // ── Injection ─────────────────────────────────────────────────────────────
 
 const INJECTION_PATTERNS: RegExp[] = [
@@ -101,10 +107,16 @@ const INJECTION_PATTERNS: RegExp[] = [
     /\b(ignore|disregard|forget)\s+everything\s+(you\s+(were|have\s+been)\s+told|above|before)\b/i,
     // "reveal your system prompt", "print the hidden instructions"
     /\b(reveal|show|print|repeat|display|output|leak|dump|tell\s+me)\s+(me\s+)?(your|the)\s+(system|hidden|initial|original|secret)\s+(prompt|instructions?|message|rules)\b/i,
-    // "give me the system prompt", "what is your system prompt". A bare
-    // "what is a system prompt" is a harmless question and passes.
-    /\b(reveal|show|print|repeat|give|send|share|display|output|leak|dump|copy|paste|tell\s+me)\b.{0,20}\bsystem\s+prompt\b/i,
-    /\byour\s+(system|hidden|initial|original|secret)\s+(prompt|instructions)\b/i,
+    // "give me the system prompt", "share your full system prompt". The verb
+    // must point at *this* assistant's prompt (your/the/its), so educational
+    // questions like "show me how to write a system prompt" or "give me an
+    // example of a system prompt" pass.
+    /\b(reveal|show|print|repeat|give|send|share|display|output|leak|dump|copy|paste|tell)\s+(me\s+|us\s+)?(your|the|its)\s+(full\s+|exact\s+|entire\s+|complete\s+)?system\s+prompt\b/i,
+    // "what is the system prompt you were given"
+    /\bthe\s+system\s+prompt\s+(you|that\s+you)\s+(were|have\s+been|are)\b/i,
+    // "what is your system prompt", "print your rules"
+    /\byour\s+(system|hidden|initial|original|secret)\s+(prompt|instructions?|message|rules)\b/i,
+    /\b(reveal|show|print|repeat|display|output|leak|dump)\s+(me\s+)?your\s+(prompt|instructions?|rules)\b/i,
     // "bypass your safety rules", but not "heart bypass surgery" or "bypass road"
     /\bbypass\s+(your|the|all|any)\s+(safety|guardrails?|filters?|restrictions?|rules|instructions?|content\s+polic(y|ies))\b/i,
     /\bjail\s?break(s|ing|ed)?\b/i,
@@ -133,6 +145,8 @@ export function detectPII(text: string): Exclude<GuardrailKind, 'injection'> | n
     if (PAN_PATTERN.test(text)) return 'pii_pan';
     PHONE_PATTERN.lastIndex = 0;
     if (PHONE_PATTERN.test(text)) return 'pii_phone';
+    CONTEXT_PHONE_PATTERN.lastIndex = 0;
+    if (CONTEXT_PHONE_PATTERN.test(text)) return 'pii_phone';
     return null;
 }
 
@@ -148,6 +162,10 @@ export function maskPII(text: string): string {
     }
     out = out.replace(PAN_PATTERN, (pan) => `XXXXX${pan.slice(5, 9)}X`);
     out = out.replace(PHONE_PATTERN, (_all, lead: string, phone: string) => {
+        const digits = phone.replace(/\D/g, '');
+        return `${lead}XXXXXX${digits.slice(-4)}`;
+    });
+    out = out.replace(CONTEXT_PHONE_PATTERN, (_all, lead: string, phone: string) => {
         const digits = phone.replace(/\D/g, '');
         return `${lead}XXXXXX${digits.slice(-4)}`;
     });

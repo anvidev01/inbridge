@@ -22,7 +22,8 @@ export const HISTORY_NOTE: Record<Language, string> = {
  */
 export const ANSWER_STATE_PREFIXES = ['inbridge_feedback:', 'inbridge_checklist:'] as const;
 const TITLE_MAX = 60;
-const DEFAULT_TITLE = 'New thread';
+/** Stored title for threads with no text; ThreadList localises it at render time. */
+export const DEFAULT_TITLE = 'New thread';
 
 export interface Thread {
     id: string;
