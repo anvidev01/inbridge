@@ -114,11 +114,10 @@ export function clearRagCache() {
 
 export class RAGEngine {
     private vectorStorePath: string;
-    private embeddings: any; // Dynamic type
     private llm: ChatOllama | ChatGroq;
     private tavilyClient: any; // Using any for now as @tavily/core types might vary
     private isInitialized: boolean = false;
-    private vectorStore: any = null; // Type as any since we load dynamically
+    private vectorStore: import("./vector-search").LocalVectorStore | null = null;
 
     // Configuration
     //
@@ -173,20 +172,15 @@ export class RAGEngine {
 
         try {
             console.log(`Loading vector store from: ${this.vectorStorePath}`);
-            
-            // Dynamic import to prevent startup crash on Vercel
-            const { HuggingFaceTransformersEmbeddings } = await import("@langchain/community/embeddings/huggingface_transformers");
-            this.embeddings = new HuggingFaceTransformersEmbeddings({
-                model: "Xenova/all-MiniLM-L6-v2",
-            });
+            const started = Date.now();
 
-            // Dynamic import to prevent startup crash if binary is missing/incompatible
-            const { FaissStore } = await import("@langchain/community/vectorstores/faiss");
-
-            this.vectorStore = await FaissStore.load(
-                this.vectorStorePath,
-                this.embeddings
-            );
+            // Pure-JS search over the same FAISS index file. faiss-node's native
+            // binary is not bundled by Vercel, so FaissStore.load always failed
+            // there. Dynamic import keeps the embedding runtime off the cold path
+            // until the first query needs it.
+            const { LocalVectorStore } = await import("./vector-search");
+            this.vectorStore = await LocalVectorStore.load(this.vectorStorePath);
+            log.info("Vector store loaded", { duration_ms: Date.now() - started });
             this.isInitialized = true;
         } catch (error) {
             console.error("⚠️ Failed to load vector store (Running in Fallback Mode):", error);

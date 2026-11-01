@@ -18,6 +18,13 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - The product is intentionally chat-only: `/`, `/services`, `/grievance`, `/status`, `/apply/*` all redirect to `/chat` (only `/services/<slug>` detail pages and `/chat` render). Note `curl -L` hides this — use `curl -I` when checking status codes.
 
 ## Change Log
+### 2026-11-01 — Vector store (4,740 schemes) works on Vercel
+- **Root cause**: `faiss-node`'s native binary isn't traced into the Vercel function (`Could not locate the bindings file`), so `FaissStore.load` always failed and every query went to Tavily.
+- **Fix**: `src/lib/vector-search.ts` — pure-JS reader + brute-force L2 search over the *same* `vector_store/faiss.index` (IndexFlatL2, 4,740 × 384) and `docstore.json`; identical scores to FaissStore, ~100 ms/query. `faiss-node` is no longer loaded at runtime (still used by `scripts/generate-vector-store-faiss.js` to build the index).
+- **Embedding model shipped in repo**: `models/Xenova/all-MiniLM-L6-v2/` (q8, 23 MB, sha256 matches HF). fp32 (90 MB) is too big for git; q8 query embeddings match the fp32-built index at cosine ~0.99 and retrieve the same top docs. Falls back to HF hub download into `/tmp` if `models/` is missing. **If the index is rebuilt with a different model, update `models/` too.**
+- **Bundling** (`next.config.ts`): force-include `models/**` and onnxruntime's linux/x64 binary; exclude other platforms, GPU providers, onnxruntime-web, faiss-node. `/api/chat` trace ≈ 127 MB (limit 250 MB). Dockerfile copies `models/`.
+- Tests: `src/lib/__tests__/vector-search.test.ts` (includes a real-index retrieval test).
+
 ### 2026-11-01 — Live government search (Tavily) actually returns results
 - **Root cause (from Vercel runtime logs)**: Tavily was called on every query but returned 0 results with no error — `include_domains` was `[".gov.in", ".nic.in"]` (leading dot). Combined with the FAISS failure below, every answer had empty context and the model replied "I cannot browse the live internet".
 - **Fix** (`src/lib/rag-engine.ts`): new `searchGovPortals()` — searches with `includeDomains: ["gov.in","nic.in"]`, retries unrestricted with `site:` hints if empty, and re-checks every result with `isGovUrl()` so only `.gov.in`/`.nic.in` pages reach the LLM. Logs `Tavily search completed` with raw vs gov result counts. Recency queries (`isRecencyQuery`: latest/new/2026/deadline/नवीनतम…) go to live search *before* the static vector store. Tests: `src/lib/__tests__/gov-search.test.ts`.
