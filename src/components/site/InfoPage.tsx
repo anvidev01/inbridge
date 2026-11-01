@@ -41,9 +41,9 @@ export const TYPE = {
 export const TEXT_LINK =
     'text-fg underline decoration-accent decoration-1 underline-offset-[5px] transition-[text-decoration-thickness,color] duration-200 hover:decoration-[3px] hover:text-accent';
 
-/** The one filled button shape. */
+/** The one filled button shape: full-round, as on the landing page and in the chat. */
 export const BUTTON =
-    'inline-flex items-center justify-center gap-2 min-h-12 bg-accent px-6 text-lg font-medium text-accent-fg transition-[filter,transform] duration-200 hover:brightness-110 active:translate-y-px';
+    'inline-flex items-center justify-center gap-2 min-h-12 rounded-full bg-accent px-6 text-lg font-medium text-accent-fg transition-[filter,transform] duration-200 hover:brightness-110 active:translate-y-px';
 
 const revealStyle = (i: number) => ({ '--reveal-i': i }) as CSSProperties;
 

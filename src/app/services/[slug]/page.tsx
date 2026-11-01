@@ -78,9 +78,14 @@ function mastheadPhotos(scheme: Scheme): MastheadPhotos {
     return [lead, a, b, c];
 }
 
-/** Long names step down to the heading size so the title still holds to two lines (no extra type step). */
+/**
+ * Long names step down so the title holds to two lines: the lead step on a
+ * phone, the heading step from tablet up (no extra type step). Names over
+ * ~60 characters can still run longer; that is the dataset, not the layout.
+ */
 function titleSize(name: string): string {
-    return name.length <= 26 ? TYPE.display : TYPE.head;
+    if (name.length <= 26) return TYPE.display;
+    return 'text-[1.375rem] leading-[1.15] tracking-[-0.015em] sm:text-[length:clamp(1.75rem,0.9rem_+_1.9vw,2.5rem)] sm:leading-[1.1] sm:tracking-[-0.02em]';
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {

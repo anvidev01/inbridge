@@ -48,7 +48,7 @@ export default function RouteError({
             <button
               type="button"
               onClick={() => reset()}
-              className="inline-flex min-h-12 items-center justify-center gap-2 bg-accent px-6 text-lg font-medium text-accent-fg transition-[filter,transform] duration-200 hover:brightness-110 active:translate-y-px"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-accent px-6 text-lg font-medium text-accent-fg transition-[filter,transform] duration-200 hover:brightness-110 active:translate-y-px"
             >
               <RotateCcw size={18} aria-hidden="true" />
               Try again
