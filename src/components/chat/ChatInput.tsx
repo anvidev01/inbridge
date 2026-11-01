@@ -98,10 +98,10 @@ const COPY: Record<Language, {
         clearTopic: 'Clear topic',
         complaint: 'Draft a complaint',
         complaintMode: 'Complaint draft',
-        complaintHint: 'InBridge helps you write the complaint. It does not file it — you submit it yourself on pgportal.gov.in.',
+        complaintHint: 'InBridge helps you write the complaint. It does not file it: you submit it yourself on pgportal.gov.in.',
         exitComplaint: 'Leave complaint mode',
         pii: { aadhaar: 'an Aadhaar number', pan: 'a PAN', phone: 'a phone number' },
-        piiWarning: (what) => `This looks like ${what}. Don’t share personal ID numbers — InBridge doesn’t need them.`,
+        piiWarning: (what) => `This looks like ${what}. Don’t share personal ID numbers. InBridge doesn’t need them.`,
         mask: 'Mask it',
         voiceErrors: {
             denied: 'Microphone access was blocked. Allow it in your browser settings to use voice input.',
@@ -124,10 +124,10 @@ const COPY: Record<Language, {
         clearTopic: 'विषय हटाएँ',
         complaint: 'शिकायत लिखें',
         complaintMode: 'शिकायत ड्राफ़्ट',
-        complaintHint: 'InBridge शिकायत लिखने में मदद करता है। यह शिकायत दर्ज नहीं करता — उसे आप खुद pgportal.gov.in पर जमा करें।',
+        complaintHint: 'InBridge शिकायत लिखने में मदद करता है। यह शिकायत दर्ज नहीं करता। उसे आप खुद pgportal.gov.in पर जमा करें।',
         exitComplaint: 'शिकायत मोड बंद करें',
         pii: { aadhaar: 'आधार नंबर', pan: 'PAN', phone: 'फ़ोन नंबर' },
-        piiWarning: (what) => `यह ${what} जैसा लगता है। अपनी निजी पहचान संख्या साझा न करें — InBridge को इनकी ज़रूरत नहीं है।`,
+        piiWarning: (what) => `यह ${what} जैसा लगता है। अपनी निजी पहचान संख्या साझा न करें। InBridge को इनकी ज़रूरत नहीं है।`,
         mask: 'छिपाएँ',
         voiceErrors: {
             denied: 'माइक्रोफ़ोन की अनुमति नहीं मिली। बोलकर लिखने के लिए ब्राउज़र सेटिंग में अनुमति दें।',
@@ -150,10 +150,10 @@ const COPY: Record<Language, {
         clearTopic: 'Topic hatayein',
         complaint: 'Complaint likhein',
         complaintMode: 'Complaint draft',
-        complaintHint: 'InBridge complaint likhne mein madad karta hai. Yeh complaint file nahi karta — use aap khud pgportal.gov.in par submit karein.',
+        complaintHint: 'InBridge complaint likhne mein madad karta hai. Yeh complaint file nahi karta. Use aap khud pgportal.gov.in par submit karein.',
         exitComplaint: 'Complaint mode band karein',
         pii: { aadhaar: 'Aadhaar number', pan: 'PAN', phone: 'phone number' },
-        piiWarning: (what) => `Yeh ${what} jaisa lag raha hai. Apne personal ID numbers share na karein — InBridge ko inki zaroorat nahi hai.`,
+        piiWarning: (what) => `Yeh ${what} jaisa lag raha hai. Apne personal ID numbers share na karein. InBridge ko inki zaroorat nahi hai.`,
         mask: 'Mask karein',
         voiceErrors: {
             denied: 'Microphone ki permission nahi mili. Voice input ke liye browser settings mein allow karein.',
@@ -211,6 +211,13 @@ export function dictationText(base: string, results: SpeechResultList): string {
     for (let i = 0; i < results.length; i++) transcript += results[i][0].transcript;
     return joinText(base, transcript.trim());
 }
+
+/**
+ * Press feedback shared by the composer's round controls. The rounded-full!
+ * keeps a round focus ring: globals.css sets border-radius: 4px on every
+ * :focus-visible element, unlayered, so it beats the utility otherwise.
+ */
+const press = 'transition duration-150 ease-out motion-safe:active:scale-[0.94] focus-visible:rounded-full!';
 
 const MAX_TEXTAREA_PX = 168; // about 6 lines at 16px / 1.6
 
@@ -337,8 +344,13 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                 <p className="px-1 text-sm text-muted">{copy.complaintHint}</p>
             )}
 
-            {/* The textarea's own outline is replaced by a ring on the whole composer box. */}
-            <div className="w-full rounded-xl border border-line bg-surface has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-accent">
+            {/*
+              One focus ring, on the composer box, following its radius. The
+              textarea's own outline is switched off with !important because the
+              global :focus-visible rule in globals.css is unlayered and would
+              otherwise beat Tailwind's outline-none, drawing a second ring.
+            */}
+            <div className="w-full rounded-xl border border-line bg-surface transition-[border-color,outline-color] duration-150 outline-2 outline-offset-2 outline-transparent has-[textarea:focus]:outline-accent">
                 <label htmlFor="chat-composer" className="sr-only">{copy.placeholder}</label>
                 <textarea
                     id="chat-composer"
@@ -350,39 +362,51 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                     rows={1}
                     lang={LANGUAGES.find((l) => l.code === language)?.htmlLang}
                     aria-describedby={pii.length > 0 ? 'composer-pii' : undefined}
-                    className="block w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base text-fg placeholder:text-muted leading-relaxed outline-none focus-visible:outline-none min-h-[52px]"
+                    className="block w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base text-fg placeholder:text-muted leading-relaxed outline-none! min-h-[52px]"
                     style={{ maxHeight: MAX_TEXTAREA_PX }}
                 />
 
                 <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
-                    {/* Topic filter: a native select styled as a chip */}
-                    <div className={`relative inline-flex items-center gap-1.5 h-11 pl-3 pr-2 rounded-full border text-sm transition-colors min-w-0
+                    {/*
+                      Topic filter: one pill. A native select covers the label part (so the
+                      menu is the platform's own); once a topic is chosen, its clear button
+                      sits inside the same pill.
+                    */}
+                    <div className={`inline-flex items-center h-11 rounded-full min-w-0 text-sm transition-colors duration-150
                         has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2 has-[select:focus-visible]:outline-accent
-                        ${focus === 'all' ? 'border-line text-muted hover:text-fg hover:bg-surface-2' : 'border-accent text-accent'}`}>
-                        <ListFilter className="w-4 h-4 shrink-0" aria-hidden="true" />
-                        <span className="min-w-0 truncate max-w-[9rem]" aria-hidden="true">{focusLabel}</span>
-                        <ChevronDown className="w-4 h-4 shrink-0" aria-hidden="true" />
-                        <select
-                            value={focus}
-                            onChange={(e) => { if (isFocus(e.target.value)) onFocusChange(e.target.value); }}
-                            aria-label={copy.topic}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base bg-surface text-fg"
-                        >
-                            <option value="all">{copy.allTopics}</option>
-                            {FOCUS_CATEGORIES.map((c) => <option key={c} value={c}>{focusLabels[c]}</option>)}
-                        </select>
+                        ${focus === 'all' ? 'border border-line text-muted hover:text-fg hover:bg-surface-2' : 'bg-surface-2 text-fg'}`}>
+                        <span className={`relative inline-flex items-center gap-1.5 h-full min-w-0 pl-3 ${focus === 'all' ? 'pr-2.5' : 'pr-1'}`}>
+                            <ListFilter className={`w-4 h-4 shrink-0 ${focus === 'all' ? '' : 'text-accent'}`} aria-hidden="true" />
+                            <span className="min-w-0 truncate max-w-[9rem]" aria-hidden="true">{focusLabel}</span>
+                            {focus === 'all' && <ChevronDown className="w-4 h-4 shrink-0" aria-hidden="true" />}
+                            <select
+                                value={focus}
+                                onChange={(e) => { if (isFocus(e.target.value)) onFocusChange(e.target.value); }}
+                                aria-label={copy.topic}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-base bg-surface text-fg outline-none!"
+                            >
+                                <option value="all">{copy.allTopics}</option>
+                                {FOCUS_CATEGORIES.map((c) => <option key={c} value={c}>{focusLabels[c]}</option>)}
+                            </select>
+                        </span>
+                        {focus !== 'all' && (
+                            <button
+                                type="button"
+                                onClick={() => onFocusChange('all')}
+                                aria-label={copy.clearTopic}
+                                title={copy.clearTopic}
+                                className={`${press} shrink-0 inline-flex items-center justify-center w-10 h-11 rounded-full text-muted hover:text-fg hover:bg-surface`}
+                            >
+                                <X className="w-4 h-4" aria-hidden="true" />
+                            </button>
+                        )}
                     </div>
-                    {focus !== 'all' && (
-                        <button type="button" onClick={() => onFocusChange('all')} aria-label={copy.clearTopic} className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2">
-                            <X className="w-4 h-4" aria-hidden="true" />
-                        </button>
-                    )}
 
                     {mode === 'grievance' ? (
-                        <span className="inline-flex items-center h-11 pl-3 rounded-full border border-accent text-accent text-sm min-w-0">
-                            <MessageSquareWarning className="w-4 h-4 shrink-0 mr-1.5" aria-hidden="true" />
+                        <span className="inline-flex items-center h-11 pl-3 rounded-full bg-surface-2 text-fg text-sm min-w-0">
+                            <MessageSquareWarning className="w-4 h-4 shrink-0 mr-1.5 text-accent" aria-hidden="true" />
                             <span className="truncate">{copy.complaintMode}</span>
-                            <button type="button" onClick={() => onModeChange('default')} aria-label={copy.exitComplaint} className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-full hover:bg-surface-2">
+                            <button type="button" onClick={() => onModeChange('default')} aria-label={copy.exitComplaint} title={copy.exitComplaint} className={`${press} shrink-0 inline-flex items-center justify-center w-10 h-11 rounded-full text-muted hover:text-fg hover:bg-surface`}>
                                 <X className="w-4 h-4" aria-hidden="true" />
                             </button>
                         </span>
@@ -390,7 +414,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                         <button
                             type="button"
                             onClick={() => { onModeChange('grievance'); textareaRef.current?.focus(); }}
-                            className="inline-flex items-center gap-1.5 h-11 px-3 rounded-full border border-line text-sm text-muted hover:text-fg hover:bg-surface-2 min-w-0"
+                            className={`${press} inline-flex items-center gap-1.5 h-11 px-3 rounded-full border border-line text-sm text-muted hover:text-fg hover:bg-surface-2 min-w-0`}
                         >
                             <MessageSquareWarning className="w-4 h-4 shrink-0" aria-hidden="true" />
                             <span className="hidden sm:inline truncate">{copy.complaint}</span>
@@ -406,7 +430,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                                 aria-pressed={isListening}
                                 aria-label={copy.voice}
                                 title={copy.voice}
-                                className={`inline-flex items-center justify-center w-11 h-11 rounded-full transition-colors ${isListening ? 'bg-danger/15 text-danger' : 'text-muted hover:text-fg hover:bg-surface-2'}`}
+                                className={`${press} inline-flex items-center justify-center w-11 h-11 rounded-full ${isListening ? 'bg-danger/15 text-danger' : 'text-muted hover:text-fg hover:bg-surface-2'}`}
                             >
                                 <Mic className={`w-5 h-5 ${isListening ? 'animate-pulse' : ''}`} aria-hidden="true" />
                             </button>
@@ -418,7 +442,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                                 onClick={onStop}
                                 aria-label={copy.stop}
                                 title={`${copy.stop} (Esc)`}
-                                className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fg text-bg hover:opacity-90 transition-opacity"
+                                className={`${press} inline-flex items-center justify-center w-11 h-11 rounded-full bg-fg text-bg hover:opacity-90`}
                             >
                                 <Square className="w-4 h-4" fill="currentColor" aria-hidden="true" />
                             </button>
@@ -428,7 +452,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                                 onClick={send}
                                 disabled={!value.trim()}
                                 aria-label={copy.send}
-                                className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fg text-bg hover:opacity-90 disabled:bg-surface-2 disabled:text-muted disabled:cursor-not-allowed transition-colors"
+                                className={`${press} inline-flex items-center justify-center w-11 h-11 rounded-full bg-fg text-bg hover:opacity-90 disabled:bg-surface-2 disabled:text-muted disabled:cursor-not-allowed disabled:scale-100`}
                             >
                                 <ArrowUp className="w-5 h-5" aria-hidden="true" />
                             </button>
@@ -446,7 +470,7 @@ export function ChatInput({ value, onChange, onSend, onStop, busy, language, foc
                         <button
                             type="button"
                             onClick={() => { cancelDictation(); onChange(maskPii(value)); textareaRef.current?.focus(); }}
-                            className="min-h-11 px-4 rounded-full border border-danger/40 font-medium hover:bg-surface-2"
+                            className={`${press} min-h-11 px-4 rounded-full border border-danger/40 font-medium hover:bg-surface-2`}
                         >
                             {copy.mask}
                         </button>

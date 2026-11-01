@@ -23,7 +23,7 @@ export function ActionButton({ icon, label, alwaysShowLabel = false, className =
             type="button"
             title={label}
             {...props}
-            className={`inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-2.5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-50 aria-pressed:text-fg ${className}`}
+            className={`inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-2.5 text-sm text-muted transition duration-150 ease-out hover:bg-surface-2 hover:text-fg motion-safe:active:scale-[0.96] focus-visible:rounded-full! disabled:opacity-50 aria-pressed:text-fg ${className}`}
         >
             <span aria-hidden="true" className="inline-flex">{icon}</span>
             <span className={alwaysShowLabel ? '' : 'max-sm:sr-only'}>{label}</span>

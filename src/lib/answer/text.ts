@@ -61,9 +61,9 @@ export function stripMarkdown(md: string, { dropUrls = false }: { dropUrls?: boo
         .trim();
 }
 
-/** Numbered source list, "[1] Title — https://…", one per line. */
+/** Numbered source list, "[1] Title: https://…", one per line. */
 export function formatSourceList(sources: Citation[]): string {
-    return sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`).join('\n');
+    return sources.map((s) => `[${s.n}] ${s.title}: ${s.url}`).join('\n');
 }
 
 /**

@@ -45,7 +45,7 @@ export function buildChain(
 ): LLMProvider[] {
     const active = env.ACTIVE_AI_PROVIDER as LLMProvider | 'both' | undefined;
 
-    // 'both' is a legacy value meaning "no specific primary" — fall through to
+    // 'both' is a legacy value meaning "no specific primary". Fall through to
     // the preference order rather than treating it as a provider name.
     const configuredPrimary =
         active && active !== 'both' && PREFERENCE_ORDER.includes(active as LLMProvider)

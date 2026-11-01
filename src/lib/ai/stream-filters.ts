@@ -1,11 +1,11 @@
 /**
  * Incremental filters applied to the model's text as it streams.
  *
- * Both filters have the same problem to solve: a token they care about
- * ("<think>", "---FOLLOWUPS---") can arrive split across chunks ("---FOLL" +
- * "OWUPS---"). Each filter therefore holds back any tail of the buffer that
- * could still turn into the token, and releases it once the next chunk proves
- * it was ordinary text.
+ * They share one problem: a token they care about ("<think>",
+ * "---FOLLOWUPS---", a dash and the space after it) can arrive split across
+ * chunks ("---FOLL" + "OWUPS---"). Each filter therefore holds back any tail of
+ * the buffer that could still turn into the token, and releases it once the
+ * next chunk proves what it was.
  */
 
 import type { ChatMode, Language } from '../chat/protocol';
@@ -109,6 +109,85 @@ export class FollowupSplitter {
     /** Raw text after the marker, for parseFollowups. */
     get tail(): string {
         return this.tailText;
+    }
+}
+
+/**
+ * Em dashes (U+2014) and en dashes (U+2013) used as punctuation read as
+ * machine-written in Indian English and Hindi alike, and the prompt alone does
+ * not stop every model from using them. Each run of dashes (written EM below)
+ * is rewritten from what is around it:
+ *   "word EM word"   -> "word, word"
+ *   "a list EM" at the end of a line -> "a list:"
+ *   "EM item" at the start of a line -> "- item" (a markdown bullet)
+ *   "2024 EN 25" with no spaces -> "2024-25" (a range keeps a hyphen)
+ *   "| EM |" in a table -> "| - |"
+ *   next to other punctuation ("word, EM next", "word EM.") the dash is dropped.
+ * Hyphens are never touched, so "PM-KISAN", "2024-25" and the follow-ups
+ * marker pass through as they are.
+ */
+const DASH_RUN = /([ \t]*)[\u2013\u2014](?:[ \t]*[\u2013\u2014])*([ \t]*)/g;
+/** A tail that may still be part of a rewrite: any trailing spaces and dashes. */
+const DASH_TAIL = /[ \t\u2013\u2014]*$/;
+const PUNCT_BEFORE = /[,;:.!?\u0964]/;
+const PUNCT_AFTER = /[,;:.!?)\]\u0964]/;
+
+/**
+ * Rewrites every dash run in `text`. `prev` is the character just before
+ * `text` ('\n' at the start of a reply). A dash run at the very end of `text`
+ * is treated as the end of the reply, so stream callers must hold back DASH_TAIL.
+ */
+export function rewriteDashes(text: string, prev = '\n'): string {
+    return text.replace(DASH_RUN, (match: string, lead: string, trail: string, offset: number) => {
+        const before = offset > 0 ? text[offset - 1] : prev;
+        const afterIdx = offset + match.length;
+        const after = afterIdx < text.length ? text[afterIdx] : '';
+        const lineStart = before === '\n' || before === '';
+        const lineEnd = after === '\n' || after === '\r' || after === '';
+
+        // A range between figures keeps a hyphen (2024 EN 25 becomes 2024-25).
+        if (!lead && !trail && /\d/.test(before) && /\d/.test(after)) return '-';
+        // "EM item" at the start of a line was meant as a bullet.
+        if (lineStart) return lineEnd ? lead : `${lead}- `;
+        // An empty table cell or a dash next to a pipe.
+        if (before === '|' || after === '|') return `${lead}-${trail}`;
+        if (PUNCT_BEFORE.test(before)) return lineEnd ? '' : ' ';
+        if (before === '(' || PUNCT_AFTER.test(after)) return '';
+        // A dash closing a line introduces what follows (usually a list).
+        if (lineEnd) return ':';
+        return ', ';
+    });
+}
+
+/**
+ * Streaming wrapper around rewriteDashes. A dash can arrive split from the
+ * words around it ("word EM" + " next", "word " + "EM next"), so any trailing
+ * spaces or dash are held back until the next chunk shows what follows them.
+ */
+export class DashRewriter {
+    private pending = '';
+    private prev = '\n';
+
+    push(chunk: string): string {
+        const buffer = this.pending + chunk;
+        const hold = buffer.length - (DASH_TAIL.exec(buffer)?.index ?? buffer.length);
+        const ready = buffer.slice(0, buffer.length - hold);
+        this.pending = buffer.slice(buffer.length - hold);
+        return this.emit(ready);
+    }
+
+    /** Releases held-back text at end of stream. */
+    flush(): string {
+        const rest = this.pending;
+        this.pending = '';
+        return this.emit(rest);
+    }
+
+    private emit(text: string): string {
+        if (!text) return '';
+        const out = rewriteDashes(text, this.prev);
+        this.prev = text[text.length - 1];
+        return out;
     }
 }
 

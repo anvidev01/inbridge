@@ -16,7 +16,8 @@ interface SourceSheetProps {
 
 /**
  * Full source list in a native modal <dialog>: a bottom sheet on mobile, a
- * right-hand panel from md up. showModal() makes the rest of the page inert
+ * right-hand panel from md up. It slides in from its edge (@starting-style,
+ * so browsers without it simply show it; reduced motion cuts the transition). showModal() makes the rest of the page inert
  * (which traps focus) and Esc closes it; focus returns to the opener.
  */
 export function SourceSheet({ open, onClose, sources, strings, lang }: SourceSheetProps) {
@@ -68,7 +69,7 @@ export function SourceSheet({ open, onClose, sources, strings, lang }: SourceShe
             aria-labelledby={titleId}
             // Clicks on the ::backdrop land on the <dialog> element itself.
             onClick={(e) => { if (e.target === e.currentTarget) ref.current?.close(); }}
-            className="fixed inset-x-0 bottom-0 top-auto m-0 h-auto max-h-[85dvh] w-full max-w-none overflow-hidden rounded-t-xl border border-line bg-surface p-0 text-fg backdrop:bg-bg/70 md:inset-y-0 md:left-auto md:right-0 md:h-dvh md:max-h-none md:w-[420px] md:rounded-none md:border-y-0 md:border-r-0"
+            className="fixed inset-x-0 bottom-0 top-auto m-0 h-auto max-h-[85dvh] w-full max-w-none overflow-hidden rounded-t-xl border border-line bg-surface p-0 text-fg backdrop:bg-bg/70 md:inset-y-0 md:left-auto md:right-0 md:h-dvh md:max-h-none md:w-[420px] md:rounded-none md:border-y-0 md:border-r-0 transition-[translate] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] starting:open:translate-y-full md:starting:open:translate-y-0 md:starting:open:translate-x-full backdrop:transition-opacity backdrop:duration-[260ms] starting:open:backdrop:opacity-0"
         >
             <div className="flex max-h-[inherit] flex-col md:h-full">
                 <div className="flex items-center justify-between gap-2 border-b border-line py-2 pl-4 pr-2">
@@ -76,7 +77,7 @@ export function SourceSheet({ open, onClose, sources, strings, lang }: SourceShe
                     <button
                         type="button"
                         onClick={() => ref.current?.close()}
-                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-fg"
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-muted transition duration-150 hover:bg-surface-2 hover:text-fg motion-safe:active:scale-[0.94] focus-visible:rounded-full!"
                     >
                         <X size={18} aria-hidden="true" />
                         <span className="sr-only">{strings.close}</span>
@@ -90,7 +91,7 @@ export function SourceSheet({ open, onClose, sources, strings, lang }: SourceShe
                                 href={s.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex gap-3 rounded-lg p-3 hover:bg-surface-2"
+                                className="flex gap-3 rounded-lg p-3 transition-colors duration-150 hover:bg-surface-2"
                             >
                                 <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded bg-surface-2 text-xs font-semibold tabular-nums text-muted">
                                     {s.n}

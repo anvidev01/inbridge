@@ -23,7 +23,7 @@ export function FollowUps({ items, strings, onSelect }: FollowUpsProps) {
                         <button
                             type="button"
                             onClick={() => onSelect(q)}
-                            className="flex min-h-11 w-full items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-left text-sm text-fg transition-colors hover:border-accent hover:bg-surface-2 sm:w-auto"
+                            className="flex min-h-11 w-full items-center gap-2 rounded-full bg-surface px-4 py-2 text-left text-sm text-fg transition duration-150 ease-out hover:bg-surface-2 motion-safe:active:scale-[0.98] focus-visible:rounded-full! sm:w-auto"
                         >
                             <CornerDownRight size={14} aria-hidden="true" className="shrink-0 text-muted" />
                             <span className="break-words">{q}</span>

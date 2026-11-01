@@ -55,3 +55,14 @@ describe('grievance prompt headings the client keys off', () => {
         }
     });
 });
+
+describe('punctuation rule', () => {
+    test('every language is told not to use em or en dashes', () => {
+        for (const language of ['en', 'hi', 'hinglish'] as const) {
+            for (const mode of ['default', 'grievance'] as const) {
+                const prompt = buildSystemPrompt({ language, mode, focus: 'all', sources: [] });
+                assert.match(prompt, /Never use em dashes \(\u2014\) or en dashes \(\u2013\)/, `${language}/${mode}`);
+            }
+        }
+    });
+});

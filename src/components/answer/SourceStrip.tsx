@@ -37,11 +37,11 @@ export function SourceStrip({ messageId, sources, strings, highlighted, lang }: 
                             href={s.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`flex h-[84px] w-[168px] flex-col justify-between rounded-lg border bg-surface p-3 transition-colors hover:border-accent ${highlighted === s.n ? 'border-accent ring-2 ring-accent' : 'border-line'}`}
+                            className={`flex h-[84px] w-[168px] flex-col justify-between rounded-lg border bg-surface p-3 transition duration-150 ease-out hover:border-muted motion-safe:active:scale-[0.98] ${highlighted === s.n ? 'border-accent ring-2 ring-accent' : 'border-line'}`}
                         >
                             <span className="line-clamp-2 text-[13px] font-medium leading-snug text-fg">{s.title}</span>
                             <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
-                                <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded bg-surface-2 px-1 text-[10px] font-semibold tabular-nums">
+                                <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded bg-surface-2 px-1 text-xs font-semibold tabular-nums">
                                     {s.n}
                                 </span>
                                 <span className="truncate">{s.host}</span>
@@ -61,7 +61,7 @@ export function SourceStrip({ messageId, sources, strings, highlighted, lang }: 
                             type="button"
                             onClick={() => setSheetOpen(true)}
                             aria-haspopup="dialog"
-                            className="flex h-[84px] min-w-[96px] flex-col items-center justify-center gap-1 rounded-lg border border-line bg-surface-2 px-3 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-fg"
+                            className="flex h-[84px] min-w-[96px] flex-col items-center justify-center gap-1 rounded-lg border border-line bg-surface-2 px-3 text-[13px] font-medium text-muted transition duration-150 ease-out hover:border-muted hover:text-fg motion-safe:active:scale-[0.98]"
                         >
                             <List size={16} aria-hidden="true" />
                             {strings.viewAll(sources.length)}
