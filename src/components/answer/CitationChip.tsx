@@ -5,6 +5,7 @@ import { ExternalLink } from 'lucide-react';
 
 import type { Citation } from '@/lib/chat/protocol';
 import type { AnswerStrings } from '@/lib/answer/strings';
+import { anchorOffscreen, popoverPosition, type PopoverPosition } from '@/lib/answer/popover';
 
 interface CitationChipProps {
     citation: Citation;
@@ -27,7 +28,7 @@ const POPOVER_WIDTH = 288;
  */
 export function CitationChip({ citation, strings, onJump }: CitationChipProps) {
     const [open, setOpen] = useState(false);
-    const [pos, setPos] = useState<React.CSSProperties>({});
+    const [pos, setPos] = useState<PopoverPosition | null>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const wrapperRef = useRef<HTMLSpanElement>(null);
     const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,21 +40,16 @@ export function CitationChip({ citation, strings, onJump }: CitationChipProps) {
         closeTimer.current = null;
     };
 
+    const place = useCallback(() => {
+        const rect = buttonRef.current?.getBoundingClientRect();
+        if (rect) setPos(popoverPosition(rect, window.innerWidth, window.innerHeight, POPOVER_WIDTH));
+    }, []);
+
     const show = useCallback(() => {
         cancelClose();
-        const rect = buttonRef.current?.getBoundingClientRect();
-        if (rect) {
-            // Fixed positioning, clamped to the viewport, so the popover can
-            // never cause horizontal scroll on a 320px screen.
-            const width = Math.min(POPOVER_WIDTH, window.innerWidth - 16);
-            const left = Math.min(Math.max(rect.left, 8), window.innerWidth - width - 8);
-            const below = window.innerHeight - rect.bottom > 160;
-            setPos(below
-                ? { left, width, top: rect.bottom + 6 }
-                : { left, width, bottom: window.innerHeight - rect.top + 6 });
-        }
+        place();
         setOpen(true);
-    }, []);
+    }, [place]);
 
     const hide = useCallback(() => {
         cancelClose();
@@ -65,21 +61,35 @@ export function CitationChip({ citation, strings, onJump }: CitationChipProps) {
         closeTimer.current = setTimeout(() => setOpen(false), 150);
     };
 
-    // A fixed popover would drift away from its chip on scroll, so close it
-    // instead. Also close on a tap elsewhere (iOS does not focus buttons on
-    // tap, so blur alone is not enough).
+    // The popover is position:fixed, so follow the chip on scroll/resize (the
+    // chat auto-scrolls while tokens stream), at most once per frame. Close
+    // only once the chip has left the viewport. Also close on a tap elsewhere
+    // (iOS does not focus buttons on tap, so blur alone is not enough).
     useEffect(() => {
         if (!open) return;
-        const onScroll = () => setOpen(false);
+        let frame = 0;
+        const onMove = () => {
+            if (frame) return;
+            frame = requestAnimationFrame(() => {
+                frame = 0;
+                const rect = buttonRef.current?.getBoundingClientRect();
+                if (!rect || anchorOffscreen(rect, window.innerHeight)) {
+                    setOpen(false);
+                    return;
+                }
+                setPos(popoverPosition(rect, window.innerWidth, window.innerHeight, POPOVER_WIDTH));
+            });
+        };
         const onOutside = (e: PointerEvent) => {
             if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
         };
-        window.addEventListener('scroll', onScroll, true);
-        window.addEventListener('resize', onScroll);
+        window.addEventListener('scroll', onMove, { capture: true, passive: true });
+        window.addEventListener('resize', onMove);
         document.addEventListener('pointerdown', onOutside);
         return () => {
-            window.removeEventListener('scroll', onScroll, true);
-            window.removeEventListener('resize', onScroll);
+            if (frame) cancelAnimationFrame(frame);
+            window.removeEventListener('scroll', onMove, { capture: true });
+            window.removeEventListener('resize', onMove);
             document.removeEventListener('pointerdown', onOutside);
         };
     }, [open]);
@@ -133,12 +143,12 @@ export function CitationChip({ citation, strings, onJump }: CitationChipProps) {
                     id={popoverId}
                     role="group"
                     aria-label={label}
-                    style={pos}
+                    style={pos ?? undefined}
                     onPointerEnter={(e) => { if (e.pointerType === 'mouse') cancelClose(); }}
                     onPointerLeave={(e) => { if (e.pointerType === 'mouse') hideSoon(); }}
                     className="fixed z-50 block rounded-lg border border-line bg-surface p-3 text-left text-sm leading-snug text-fg shadow-sm animate-fadeIn"
                 >
-                    <span className="block font-medium line-clamp-3 break-anywhere">{citation.title}</span>
+                    <span className="block font-medium line-clamp-3 wrap-anywhere">{citation.title}</span>
                     <span className="mt-1 flex items-center gap-2 text-xs text-muted">
                         <span className="truncate">{citation.host}</span>
                         {citation.official && (

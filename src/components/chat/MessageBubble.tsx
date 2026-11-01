@@ -14,14 +14,16 @@ import { ProvenanceLine } from '@/components/answer/ProvenanceLine';
 import { ReadAloud } from '@/components/answer/ReadAloud';
 import { ShareMenu } from '@/components/answer/ShareMenu';
 import { SourceStrip, sourceCardId } from '@/components/answer/SourceStrip';
+import { useStableCitations } from '@/components/answer/useStableCitations';
 import { LANGUAGES, dataPart, messageText } from '@/lib/chat/protocol';
 import { SITE_URL } from '@/lib/site';
 import { answerStrings } from '@/lib/answer/strings';
 import { buildCopyText, buildShareText, cleanAnswerText } from '@/lib/answer/text';
 import { extractChecklist, extractComplaintDraft } from '@/lib/answer/sections';
 import { formatTime } from '@/lib/answer/format';
+import { answerContext, isStoppedAnswer } from '@/lib/answer/message';
 
-import type { ChatMode, InBridgeUIMessage, Language, PhaseData } from '@/lib/chat/protocol';
+import type { ChatMode, Citation, InBridgeUIMessage, Language, PhaseData } from '@/lib/chat/protocol';
 
 /**
  * Contract between ChatWindow (owner: chat shell) and MessageBubble (owner:
@@ -45,6 +47,7 @@ export interface MessageBubbleProps {
 }
 
 const HIGHLIGHT_MS = 2000;
+const EMPTY_SOURCES: Citation[] = [];
 
 export function MessageBubble({ message, isLast, isStreaming, phase, language, mode, onFollowUp, onRegenerate }: MessageBubbleProps) {
     const rawText = messageText(message);
@@ -53,7 +56,7 @@ export function MessageBubble({ message, isLast, isStreaming, phase, language, m
         return (
             <div className="mt-10 mb-2 w-full animate-[fadeIn_0.5s_ease-out_forwards]">
                 {/* The question reads big (answer-engine layout) but is not a heading. */}
-                <p className="font-serif text-xl font-medium leading-snug text-fg whitespace-pre-wrap break-words break-anywhere sm:text-2xl">
+                <p className="font-serif text-xl font-medium leading-snug text-fg whitespace-pre-wrap break-words wrap-anywhere sm:text-2xl">
                     {rawText}
                 </p>
             </div>
@@ -75,13 +78,16 @@ export function MessageBubble({ message, isLast, isStreaming, phase, language, m
     );
 }
 
-function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, language, mode, onFollowUp, onRegenerate }: MessageBubbleProps & { rawText: string }) {
+function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, language: uiLanguage, mode: uiMode, onFollowUp, onRegenerate }: MessageBubbleProps & { rawText: string }) {
+    // Labels, lang and the complaint hand-off follow the mode/language the
+    // answer was generated in (metadata), not the current UI toggles.
+    const { mode, language } = answerContext(message, { mode: uiMode, language: uiLanguage });
     const t = answerStrings(language);
     const lang = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
 
     const answer = useMemo(() => cleanAnswerText(rawText), [rawText]);
-    const sourcesPart = dataPart(message, 'sources');
-    const sources = useMemo(() => sourcesPart ?? [], [sourcesPart]);
+    // Stable across streamed chunks while the sources themselves are unchanged.
+    const sources = useStableCitations(dataPart(message, 'sources') ?? EMPTY_SOURCES);
     const provenance = dataPart(message, 'provenance');
     const followups = dataPart(message, 'followups') ?? [];
     const createdAt = message.metadata?.createdAt;
@@ -117,6 +123,7 @@ function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, languag
 
     const time = formatTime(createdAt, lang.htmlLang);
     const showActions = !isStreaming && answer.length > 0;
+    const stopped = isStoppedAnswer(message, { isLast, isStreaming, hasText: answer.length > 0 });
     const citationHosts = useMemo(() => [...new Set(sources.map((s) => s.host).filter(Boolean))], [sources]);
 
     return (
@@ -131,6 +138,7 @@ function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, languag
             {answer && (
                 <MarkdownRenderer content={answer} citations={sources} onCitationJump={jumpToSource} strings={t} />
             )}
+            {stopped && <p className="mt-1 text-sm italic text-muted">{t.stopped}</p>}
 
             {checklist && <Checklist messageId={message.id} checklist={checklist} strings={t} />}
             {draft && <ComplaintDraft draft={draft} strings={t} />}

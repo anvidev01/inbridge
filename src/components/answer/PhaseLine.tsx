@@ -24,7 +24,10 @@ interface PhaseLineProps {
  * once, never the streamed tokens.
  */
 export function PhaseLine({ phase, strings, pending = false }: PhaseLineProps) {
-    const [shown, setShown] = useState<PhaseData | null>(phase);
+    // Start empty even if a phase is already set: the role=status region must
+    // exist before its text arrives, or screen readers skip the first phase.
+    // The effect below fills it on the next tick.
+    const [shown, setShown] = useState<PhaseData | null>(null);
     const shownAt = useRef(0);
 
     useEffect(() => {
