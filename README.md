@@ -1,14 +1,15 @@
 # InBridge — Integrated Government Digital Services Platform 🇮🇳
 
-> **Public service at the speed of life.** A GIGW 3.0 & WCAG 2.2 AA compliant
-> government AI answer engine for 1.4 billion citizens — built with Next.js, Go, PostgreSQL, and Redis.
+> **Public service at the speed of life.** An independent AI answer engine for Indian
+> government schemes and services, with answers linked to official .gov.in sources —
+> built with Next.js, Go, PostgreSQL, and Redis.
+>
+> InBridge is **not** a government website and is not affiliated with any government body.
 
 [![Build](https://img.shields.io/badge/build-passing-2E7D32?style=flat-square)](https://github.com/anvidev01/InBridge-)
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?style=flat-square&logo=go)](https://go.dev/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![WCAG](https://img.shields.io/badge/WCAG-2.2%20AA-1A237E?style=flat-square)](https://www.w3.org/WAI/WCAG22/quickref/)
-[![GIGW](https://img.shields.io/badge/GIGW-3.0-1A237E?style=flat-square)](https://guidelines.india.gov.in/)
-[![DPDP](https://img.shields.io/badge/DPDP%20Act-2023-C62828?style=flat-square)](https://www.meity.gov.in/data-protection-framework)
 [![License](https://img.shields.io/badge/license-MIT-616161?style=flat-square)](./LICENSE)
 
 ---
@@ -18,11 +19,11 @@
 InBridge is a **production-grade, full-stack government digital services platform** that consolidates 100+ citizen services — Aadhaar, PAN, Passport, Ration Card, ITR, PM-KISAN, RTI and more — behind a single, accessible AI-powered portal.
 
 **Key capabilities:**
-- 🤖 **AI Answer Engine** — Perplexity-style interface powered by Groq (Llama-3) with government-source citations
+- 🤖 **AI Answer Engine** — Perplexity-style interface (Groq, with Anthropic/Gemini failover when configured) with numbered citations to official sources
 - 🔐 **Secure Authentication** — RS256 JWT auth with bcrypt password hashing, Redis-backed rate limiting
 - 🗄️ **Real Database** — PostgreSQL (pgvector) with full citizen, grievance & application schema
-- 🌐 **Multilingual** — 11 Indian languages via Bhashini API
-- ♿ **Accessible** — WCAG 2.2 AA, GIGW 3.0, DPDP Act 2023 compliant
+- 🌐 **Languages** — English, Hindi and Hinglish answers (Bhashini integration is a stub, not live)
+- ♿ **Accessible by design** — keyboard navigation, visible focus, zoom allowed, reduced motion, Devanagari fonts (built with WCAG 2.2 / GIGW 3.0 / DPDP Act 2023 in mind; not audited or certified)
 
 Designed for **ALL** Indian citizens:
 - 🧓 Elderly users with larger touch targets and clear fonts
@@ -409,22 +410,23 @@ audit_log (id, citizen_id, action, entity, entity_id, ip_addr, created_at)
 
 ### AI Answer Engine
 - **Perplexity-style interface** — search-first dark UI with source citations
-- **Groq Cloud** (Llama-3.3-70b-versatile) for sub-second LLM inference
+- **Groq Cloud** (model set by `GROQ_MODEL`) for fast LLM inference, with Anthropic / Gemini failover
 - **Agentic RAG** — Faiss vector store + Tavily web search for live government data
 - **PII Guardrails** — Strict content filtering before LLM context
-- **Multilingual** — 11 Indian languages via Bhashini API
+- **Languages** — English, Hindi and Hinglish
 
-### Government Compliance
-- **GIGW 3.0** — State Emblem, Ministry branding, mandatory footer links
+### Accessibility & privacy (design goals, not certifications)
+- **No government branding** — no State Emblem, ministry logos or tricolour; InBridge is independent
 - **WCAG 2.2 Level AA** — Skip links, `aria-live` regions, keyboard navigation
-- **DPDP Act 2023** — Explicit opt-in cookie consent, data minimisation
-- **Rights of Persons with Disabilities Act 2016** — Full screen-reader support
+- **DPDP Act 2023 in mind** — chat history stays in the browser, Aadhaar/PAN/phone numbers are blocked or masked, feedback is stored without question text
+- **Screen readers** — `role="log"` message list, live status line, labelled controls
 
 ### Citizen Services
-- Multi-step application form (Aadhaar, PAN, Passport, Ration Card, ITR, PM-KISAN, RTI)
-- ARN-based application status tracking
-- Grievance filing and tracking
-- Bilingual search (Hindi + English)
+- Cited answers from a 4,739-scheme myScheme snapshot + live .gov.in/.nic.in search
+- Scheme directory and finder at `/services` (search, state, area, Central/State, audience)
+- Complaint drafter that hands off to CPGRAMS (pgportal.gov.in) — InBridge does not file complaints
+- Chat history on the device only; feedback, share, read-aloud, follow-up questions
+- InBridge does not file applications or track their status — it links to the official portals
 
 ---
 
@@ -489,7 +491,7 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting pull requests
 
 ## 📄 License
 
-MIT © 2026 [anvidev01](https://github.com/anvidev01) — Built for MeitY / Government of India
+MIT © 2026 [anvidev01](https://github.com/anvidev01) — an independent project, not affiliated with MeitY or the Government of India
 
 ---
 

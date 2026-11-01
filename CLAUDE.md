@@ -15,9 +15,41 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 ## Known issues / ops checklist
 - If login/signup return 500: check `/readyz`. `postgres: down` usually means the Supabase project is paused (restore it) or `DATABASE_URL` is not the Session pooler string.
 - `www.inbridge.in` must be added under Vercel → Settings → Domains or it shows a cert error.
-- The product is intentionally chat-only: `/`, `/services`, `/grievance`, `/status`, `/apply/*` all redirect to `/chat` (only `/services/<slug>` detail pages and `/chat` render). Note `curl -L` hides this — use `curl -I` when checking status codes.
+- Routes: `/` landing, `/chat`, `/services` (scheme finder over the myScheme snapshot), `/services/<slug>`, `/about`, `/privacy`, `/terms`. `/grievance` → `/chat?mode=grievance` (complaint drafter); `/status` and `/apply/*` → `/chat` (kept so old links don't 404). Use `curl -I` when checking status codes.
+- InBridge is **independent** — never describe it as official / government / MeitY / NIC / verified in copy, metadata or prompts.
+- Sign-in is hidden unless `NEXT_PUBLIC_AUTH_ENABLED=true` (backend DB was down; signup no longer sends DOB/gender/state, so those backend columns must be nullable before re-enabling).
+- Chat contract: `src/lib/chat/protocol.ts` (data parts `sources`/`provenance`/`followups`, transient `phase`, metadata `createdAt/mode/language`). Request body `{messages, language, mode, focus}`.
+- Theming: semantic tokens in `globals.css` (`bg-bg`, `text-fg`, `text-muted`, `border-line`, `bg-accent`…), `data-theme` dark (default) / light. Don't hard-code hex.
+- Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-01 — Editorial redesign, brand, Vercel size fix
+- **Vercel**: api/chat was 437-467 MB on Vercel only. onnxruntime-node's postinstall downloads CUDA libraries on any linux/x64 machine and the folder-wide include swept them in. Now only the four CPU runtime files are included, CUDA is excluded, and `.npmrc` skips the download. Local trace ≈ 93 MB; preview builds pass and the vector store answers on Vercel.
+- **Brand**: new mark (an arch whose keystone is the dot of an "i") as `src/app/icon.svg` + PNGs (16/32/180/192/512/maskable), near-black tile with the dot in green ink. Accent is green ink (indigo removed). Original `public/logo.*` kept.
+- **Design system** ("printed annual", from the design-taste skill): landing rebuilt with real footnotes as its device, a live dataset search (`/api/schemes`), category bars from real counts, open FAQ, credited Wikimedia Commons photographs (`src/lib/photos.ts`, credits in the footer of each page that shows them). Info pages and directory on one axis/type system (`src/components/site/InfoPage.tsx`). No eyebrows, hairlines, outlined boxes or gradients; 0 FAIL on the inspector for /, /services, /about, /privacy, /terms and /chat.
+- **Motion**: page transitions (`app/template.tsx`), masked headline, scroll reveals (`Reveal.tsx`, also picks up nodes added after navigation), all off under reduced motion.
+- **Chat**: Topic picker removed (retrieval infers the topic); single composer focus ring (global `:focus-visible` now in `@layer base`); starters are a quiet list; only new messages animate.
+- **Copy**: no em dashes anywhere in `src/`; the server rewrites em/en dashes in model output (`DashRewriter`: ranges become "to" or a hyphen, never a comma).
+- **Retrieval**: Devanagari questions go to live .gov.in search first (the dataset's embedding model is English-only).
+- **Open**: Hindi/Hinglish copy should be read by a native speaker; privacy/terms contact is still GitHub issues; the "portals answers have cited" list reflects live answers seen on 1 Nov 2026.
+
+### 2026-11-01 — Investor-readiness rebuild (branch `feat/investor-ready`)
+- **Research + audit**: 6 web-research and 5 code-audit agents; plan synthesised and executed in parallel work packages, each adversarially reviewed twice.
+- **Trust**: removed MeitY/NIC/`inbridge.gov.in` metadata, "official Government of India assistant, verified by Digital India" persona, fake helpline 1800-111-555, "under 10 minutes", "Pro Member", fabricated signup DOB/gender/state. Independence disclaimer under the composer and in the footer. README claims corrected.
+- **Chat**: typed data-part stream (sources, provenance, follow-ups, live phases), inline `[n]` citation chips + source sheet, Stop/Regenerate/error card, local history (device only), feedback API (log line, no query text), share/copy/read-aloud, document checklist, complaint drafter (CPGRAMS hand-off), language enum (en/hi/Hinglish) + topic filter, PII pre-check + masking, onboarding, voice input fixes, mobile drawer, stick-to-bottom, light theme.
+- **Server**: unified system prompt, citation-only links, guardrail false-positive fixes (Verhoeff Aadhaar, income ranges, educational questions), first-token failover with a request deadline, Groq reasoning hidden, abort propagation, rate-limit eviction, vector-store retry.
+- **Pages**: landing (counts computed from data), `/services` finder, rebuilt scheme pages, about/privacy/terms, 404/error pages, robots/sitemap/manifest/OG image, square icons.
+- **Removed**: fake attach + emoji picker, rotating greeting, dead legacy components (ChatInterface, grievance form, form components, Toast, etc.) and 10 unused deps (@xenova/transformers, tesseract.js, replicate, …). Package renamed `inbridge`.
+- **Verification**: 358 tests, tsc clean, `eslint src` 0 problems, `next build` OK, `/api/chat` trace ≈ 110 MB; 32 page/theme/viewport screenshots with no horizontal overflow or console errors.
+- **Open**: privacy/terms contact is the GitHub issues link until the owner supplies an email + entity name (and a lawyer should review them); feedback is only logged (no DB); rate limit is per instance; Hindi copy should be reviewed by a native speaker; `fix/vector-store-on-vercel` preview build failed on Vercel — check its build log before merging.
+
+### 2026-11-01 — Vector store (4,740 schemes) works on Vercel
+- **Root cause**: `faiss-node`'s native binary isn't traced into the Vercel function (`Could not locate the bindings file`), so `FaissStore.load` always failed and every query went to Tavily.
+- **Fix**: `src/lib/vector-search.ts` — pure-JS reader + brute-force L2 search over the *same* `vector_store/faiss.index` (IndexFlatL2, 4,740 × 384) and `docstore.json`; identical scores to FaissStore, ~100 ms/query. `faiss-node` is no longer loaded at runtime (still used by `scripts/generate-vector-store-faiss.js` to build the index).
+- **Embedding model shipped in repo**: `models/Xenova/all-MiniLM-L6-v2/` (q8, 23 MB, sha256 matches HF). fp32 (90 MB) is too big for git; q8 query embeddings match the fp32-built index at cosine ~0.99 and retrieve the same top docs. Falls back to HF hub download into `/tmp` if `models/` is missing. **If the index is rebuilt with a different model, update `models/` too.**
+- **Bundling** (`next.config.ts`): force-include `models/**` and onnxruntime's linux/x64 binary; exclude other platforms, GPU providers, onnxruntime-web, faiss-node. `/api/chat` trace ≈ 127 MB (limit 250 MB). Dockerfile copies `models/`.
+- Tests: `src/lib/__tests__/vector-search.test.ts` (includes a real-index retrieval test).
+
 ### 2026-11-01 — Live government search (Tavily) actually returns results
 - **Root cause (from Vercel runtime logs)**: Tavily was called on every query but returned 0 results with no error — `include_domains` was `[".gov.in", ".nic.in"]` (leading dot). Combined with the FAISS failure below, every answer had empty context and the model replied "I cannot browse the live internet".
 - **Fix** (`src/lib/rag-engine.ts`): new `searchGovPortals()` — searches with `includeDomains: ["gov.in","nic.in"]`, retries unrestricted with `site:` hints if empty, and re-checks every result with `isGovUrl()` so only `.gov.in`/`.nic.in` pages reach the LLM. Logs `Tavily search completed` with raw vs gov result counts. Recency queries (`isRecencyQuery`: latest/new/2026/deadline/नवीनतम…) go to live search *before* the static vector store. Tests: `src/lib/__tests__/gov-search.test.ts`.

@@ -97,7 +97,7 @@ async function lookup(): Promise<LLMProvider[] | null> {
         cache = { available, expiresAt: Date.now() + CACHE_TTL_MS };
         return available;
     } catch (error) {
-        log.warn('Provider health lookup failed — assuming all providers available', { error });
+        log.warn('Provider health lookup failed; assuming all providers available', { error });
         return null;
     } finally {
         clearTimeout(timer);

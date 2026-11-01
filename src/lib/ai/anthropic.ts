@@ -1,45 +1,30 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { systemPrompt } from './system-prompt';
+import { maxOutputTokens, TEMPERATURE, type ProviderInput } from './generation';
 
-interface Message {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-}
-
-export function createAnthropicStream(messages: Message[], modelOverride?: string, systemPromptOverride?: string) {
+/** Anthropic Messages API stream. Errors surface from the iterator and are rethrown. */
+export async function* streamAnthropic({ turns, system, signal }: ProviderInput): AsyncGenerator<string> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
         throw new Error('Anthropic API Key is missing. Please set ANTHROPIC_API_KEY in your environment.');
     }
 
-    const anthropic = new Anthropic({
-        apiKey: apiKey,
-    });
+    const anthropic = new Anthropic({ apiKey });
+    const modelName = process.env.ANTHROPIC_MODEL || 'claude-opus-4-5';
 
-    const modelName = modelOverride || process.env.ANTHROPIC_MODEL || 'claude-opus-4-5';
-    const maxTokens = parseInt(process.env.CHAT_MAX_TOKENS || '2048', 10);
-    const sysPrompt = systemPromptOverride || systemPrompt;
-
-    // Filter out system messages as Anthropic uses a top-level system parameter
-    const conversation = messages
-        .filter(m => m.role !== 'system')
-        .map(msg => ({
-            role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
-            content: msg.content
-        }));
-
-    try {
-        const stream = anthropic.messages.stream({
+    const stream = anthropic.messages.stream(
+        {
             model: modelName,
-            max_tokens: maxTokens,
-            system: sysPrompt,
-            messages: conversation,
-        });
+            max_tokens: maxOutputTokens(),
+            temperature: TEMPERATURE,
+            system,
+            messages: turns.map((t) => ({ role: t.role, content: t.content })),
+        },
+        { signal }
+    );
 
-        return stream;
-    } catch (error: any) {
-        console.error("Anthropic API stream error:", error);
-        throw error;
+    for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta' && event.delta.text) {
+            yield event.delta.text;
+        }
     }
 }
-

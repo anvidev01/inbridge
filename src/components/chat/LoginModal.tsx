@@ -1,20 +1,41 @@
-import React, { useState } from 'react';
+'use client';
 
+import React, { useEffect, useId, useRef, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { LoaderCircle, X } from 'lucide-react';
+
+/**
+ * Login / sign-up against the Go backend. Only rendered when
+ * NEXT_PUBLIC_AUTH_ENABLED === 'true' (see ChatShell): the backend's data
+ * stores are not reliably up, and logging in has no benefit yet.
+ */
 interface LoginModalProps {
     isOpen: boolean;
     onClose: () => void;
     onLogin: (name: string) => void;
 }
 
+const input = 'w-full h-11 px-3 rounded-lg border border-line bg-bg text-base text-fg placeholder:text-muted';
+
 export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
+    const dialogRef = useRef<HTMLDialogElement>(null);
+    const ids = useId();
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
+    const [agreed, setAgreed] = useState(false);
     const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    if (!isOpen) return null;
+    // Native modal dialog: focus trap, Escape (fires 'close') and top layer come for free.
+    useEffect(() => {
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        if (isOpen && !dialog.open) dialog.showModal();
+        if (!isOpen && dialog.open) dialog.close();
+    }, [isOpen]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -23,11 +44,10 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
 
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
         const endpoint = isSignUp ? `${baseUrl}/api/v1/auth/register` : `${baseUrl}/api/v1/auth/login`;
-        
+
         try {
-            const body = isSignUp 
-                ? { full_name: name, email, password, vid: `VID-${Math.random().toString(36).slice(2, 9).toUpperCase()}`, date_of_birth: "1990-01-01", gender: "Other", state: "Delhi", district: "New Delhi" }
-                : { email, password };
+            // Only what the user actually typed. No invented DOB, gender, state or ID.
+            const body = isSignUp ? { full_name: name, email, password } : { email, password };
 
             // The backend runs on a free-tier host that hibernates when idle: the
             // first request after a spin-down can take ~50s, and its edge can
@@ -47,8 +67,8 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                         // Only infra-level statuses are worth retrying.
                         if (!RETRYABLE.has(res.status)) return res;
                         lastErr = new Error(`transient ${res.status}`);
-                    } catch (e) {
-                        lastErr = e; // network error (offline, cold-start abort)
+                    } catch (err) {
+                        lastErr = err; // network error (offline, cold-start abort)
                     }
                     // brief backoff to let the instance finish waking
                     await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
@@ -58,128 +78,116 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
 
             const response = await postWithRetry();
 
-            let data: any = {};
+            let data: { error?: string; token?: string; citizen?: { full_name?: string } } = {};
             const text = await response.text();
             try {
                 data = JSON.parse(text);
-            } catch (e) {
+            } catch {
                 // Not JSON, use raw text if available
             }
 
             if (!response.ok) {
-                const errorMessage = data.error || text || (isSignUp ? 'Registration failed' : 'Invalid email or password');
-                throw new Error(errorMessage);
+                throw new Error(data.error || text || (isSignUp ? 'Registration failed' : 'Invalid email or password'));
             }
 
-            // Store session
+            const displayName = data.citizen?.full_name || name || email.split('@')[0];
             if (data.token) {
                 localStorage.setItem('inbridge_token', data.token);
-                localStorage.setItem('inbridge_user', JSON.stringify({
-                    name: data.citizen?.full_name || name || email.split('@')[0],
-                    email: email
-                }));
+                localStorage.setItem('inbridge_user', JSON.stringify({ name: displayName, email }));
             }
 
-            onLogin(data.citizen?.full_name || name || email.split('@')[0]);
+            onLogin(displayName);
             onClose();
-        } catch (err: any) {
-            const msg = String(err?.message || '');
-            const friendly = /load failed|failed to fetch|networkerror|transient/i.test(msg)
+        } catch (err) {
+            const msg = String((err as Error)?.message || '');
+            setError(/load failed|failed to fetch|networkerror|transient/i.test(msg)
                 ? 'Could not reach the server (it may be waking up). Please try again in a few seconds.'
-                : msg;
-            setError(friendly);
+                : msg);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/40 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-            <div className="w-full max-w-sm bg-[#0a0a0a] rounded-2xl shadow-xl overflow-hidden animate-[slideUp_0.3s_ease-out]">
-                <div className="p-6">
-                    <div className="flex justify-between items-center mb-6">
-                        <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded bg-white flex items-center justify-center text-black">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></svg>
-                            </div>
-                            <span className="text-lg font-bold font-serif tracking-tight text-neutral-100">InBridge</span>
-                        </div>
-                        <button onClick={onClose} className="text-[#737373] hover:text-neutral-400 transition-colors">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                        </button>
+        <dialog
+            ref={dialogRef}
+            onClose={onClose}
+            aria-labelledby={`${ids}-title`}
+            className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-lg border border-line bg-surface text-fg p-0 backdrop:bg-black/60"
+        >
+            <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <div className="flex items-center gap-2">
+                        <Image src="/logo.png" alt="" width={24} height={24} className="w-6 h-6 rounded" />
+                        <span className="text-lg font-bold font-serif tracking-tight">InBridge</span>
                     </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Close"
+                        className="-mr-2 inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2"
+                    >
+                        <X className="w-5 h-5" aria-hidden="true" />
+                    </button>
+                </div>
 
-                    <h2 className="text-2xl font-bold text-neutral-100 mb-1">{isSignUp ? 'Create an account' : 'Welcome back'}</h2>
-                    <p className="text-sm text-neutral-500 mb-6">{isSignUp ? 'Sign up to continue to InBridge.' : 'Log in to continue to InBridge.'}</p>
+                <h2 id={`${ids}-title`} className="text-2xl font-bold mb-1">{isSignUp ? 'Create an account' : 'Welcome back'}</h2>
+                <p className="text-sm text-muted mb-6">{isSignUp ? 'Sign up to continue to InBridge.' : 'Log in to continue to InBridge.'}</p>
 
-                    {error && (
-                        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2 animate-[shake_0.4s_ease-in-out]">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                            {error}
+                {error && (
+                    <p role="alert" className="mb-4 p-3 rounded-lg border border-danger/40 text-danger text-sm">{error}</p>
+                )}
+
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                    {isSignUp && (
+                        <div>
+                            <label htmlFor={`${ids}-name`} className="block text-sm font-medium mb-1.5">Full name</label>
+                            <input id={`${ids}-name`} type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} className={input} required />
                         </div>
                     )}
-
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                        {isSignUp && (
-                            <div>
-                                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Full Name</label>
-                                <input
-                                    type="text"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="Jane Doe"
-                                    className="w-full px-4 py-2.5 rounded-lg border border-neutral-800 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-sm"
-                                    required
-                                />
-                            </div>
-                        )}
-                        <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Email address</label>
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="jane@example.com"
-                                className="w-full px-4 py-2.5 rounded-lg border border-neutral-800 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-sm"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Password</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
-                                className="w-full px-4 py-2.5 rounded-lg border border-neutral-800 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-sm bg-neutral-900/50 text-white"
-                                required
-                            />
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full bg-white text-black font-medium py-2.5 rounded-lg hover:bg-gray-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed transition-colors mt-2 text-sm flex items-center justify-center gap-2"
-                        >
-                            {loading && (
-                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                                </svg>
-                            )}
-                            {isSignUp ? (loading ? 'Signing Up...' : 'Sign Up') : (loading ? 'Logging In...' : 'Log In')}
-                        </button>
-                    </form>
-
-                    <div className="mt-6 text-center text-sm text-neutral-500 border-t border-neutral-800 pt-6">
-                        {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-                        <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="font-semibold text-white hover:underline cursor-pointer">
-                            {isSignUp ? 'Log in' : 'Sign up'}
-                        </button>
+                    <div>
+                        <label htmlFor={`${ids}-email`} className="block text-sm font-medium mb-1.5">Email address</label>
+                        <input id={`${ids}-email`} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} required />
                     </div>
+                    <div>
+                        <label htmlFor={`${ids}-password`} className="block text-sm font-medium mb-1.5">Password</label>
+                        <input
+                            id={`${ids}-password`}
+                            type="password"
+                            autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className={input}
+                            required
+                        />
+                    </div>
+
+                    {isSignUp && (
+                        <label className="flex items-start gap-3 text-sm text-muted">
+                            <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required className="mt-0.5 w-5 h-5 shrink-0 accent-[var(--accent)]" />
+                            <span>
+                                I agree to the <Link href="/terms" className="text-accent underline">Terms</Link> and <Link href="/privacy" className="text-accent underline">Privacy policy</Link>.
+                            </span>
+                        </label>
+                    )}
+
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full min-h-11 mt-2 rounded-lg bg-fg text-bg text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+                    >
+                        {loading && <LoaderCircle className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                        {isSignUp ? (loading ? 'Signing up…' : 'Sign up') : (loading ? 'Logging in…' : 'Log in')}
+                    </button>
+                </form>
+
+                <div className="mt-6 text-center text-sm text-muted border-t border-line pt-6">
+                    {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                    <button type="button" onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="min-h-11 px-1 font-semibold text-fg underline-offset-2 hover:underline">
+                        {isSignUp ? 'Log in' : 'Sign up'}
+                    </button>
                 </div>
             </div>
-        </div>
+        </dialog>
     );
 }
-

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { isGovUrl, isRecencyQuery } from '../rag-engine';
+import { hasDevanagari, isGovUrl, isRecencyQuery } from '../rag-engine';
 
 describe('isGovUrl', () => {
     test('accepts official government hosts and subdomains', () => {
@@ -33,5 +33,16 @@ describe('isRecencyQuery', () => {
     test('leaves evergreen how-to questions to the vector store', () => {
         assert.equal(isRecencyQuery('PM-KISAN eligibility'), false);
         assert.equal(isRecencyQuery('how to link PAN with Aadhaar'), false);
+    });
+});
+
+describe('hasDevanagari', () => {
+    test('detects Hindi questions, which skip the English-only dataset search', () => {
+        assert.ok(hasDevanagari('छात्रवृत्ति के लिए कैसे आवेदन करें'));
+        assert.ok(hasDevanagari('PM-KISAN की किस्त'));
+    });
+    test('leaves English and Hinglish in Latin script alone', () => {
+        assert.equal(hasDevanagari('PM-KISAN eligibility'), false);
+        assert.equal(hasDevanagari('scholarship ke liye apply kaise karein'), false);
     });
 });

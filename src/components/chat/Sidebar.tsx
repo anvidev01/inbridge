@@ -1,174 +1,294 @@
-import React from 'react';
+'use client';
 
-export interface ChatHistoryItem {
-    id: string;
-    title: string;
-    updatedAt: Date;
+import React, { useEffect, useRef, useSyncExternalStore } from 'react';
+import Link from 'next/link';
+import {
+    Baby, BookOpen, Briefcase, GraduationCap, HeartPulse, House, LogOut, MessageSquareWarning,
+    SquarePen, Sprout, UserRound, Users, X, type LucideIcon,
+} from 'lucide-react';
+import { ThreadList } from './ThreadList';
+import { Logo } from '@/components/site/Logo';
+import type { Thread } from '@/lib/history';
+import type { Language } from '@/lib/chat/protocol';
+
+type StarterKey = 'farmers' | 'students' | 'baby' | 'health' | 'business' | 'work' | 'home' | 'pension';
+
+const STARTER_ICONS: { key: StarterKey; icon: LucideIcon }[] = [
+    { key: 'farmers', icon: Sprout },
+    { key: 'students', icon: GraduationCap },
+    { key: 'baby', icon: Baby },
+    { key: 'health', icon: HeartPulse },
+    { key: 'business', icon: Briefcase },
+    { key: 'work', icon: Users },
+    { key: 'home', icon: House },
+    { key: 'pension', icon: UserRound },
+];
+
+interface SidebarCopy {
+    menu: string;
+    tagline: string;
+    closeMenu: string;
+    actions: string;
+    newThread: string;
+    browse: string;
+    complaint: string;
+    startWith: string;
+    /** Task / life-event starters. Each fills the composer; nothing is sent until the user presses Send. */
+    starters: Record<StarterKey, { label: string; query: string }>;
+    signOut: string;
+    logIn: string;
 }
 
+export const SIDEBAR_COPY: Record<Language, SidebarCopy> = {
+    en: {
+        menu: 'InBridge menu',
+        tagline: 'Independent guide to government schemes',
+        closeMenu: 'Close menu',
+        actions: 'Actions',
+        newThread: 'New thread',
+        browse: 'Browse schemes',
+        complaint: 'Draft a complaint',
+        startWith: 'Start with',
+        starters: {
+            farmers: { label: 'Support for farmers', query: 'What central government support is available for small and marginal farmers, and how do I apply?' },
+            students: { label: 'Scholarships for students', query: 'Which scholarships can a college student apply for on the National Scholarship Portal?' },
+            baby: { label: 'Pregnancy and a new baby', query: 'What government schemes support pregnant women and new mothers?' },
+            health: { label: 'Health cover', query: 'How do I check if my family is covered under Ayushman Bharat PM-JAY?' },
+            business: { label: 'Starting a business', query: 'What government loan schemes help someone start a small business?' },
+            work: { label: 'Finding work or training', query: 'What government schemes help with skill training and finding a job?' },
+            home: { label: 'A home of your own', query: 'How do I apply for a house under Pradhan Mantri Awas Yojana?' },
+            pension: { label: 'Pension in old age', query: 'What pension schemes are available for senior citizens, and how do I apply?' },
+        },
+        signOut: 'Sign out',
+        logIn: 'Log in or sign up',
+    },
+    hi: {
+        menu: 'InBridge मेन्यू',
+        tagline: 'सरकारी योजनाओं की स्वतंत्र जानकारी',
+        closeMenu: 'मेन्यू बंद करें',
+        actions: 'विकल्प',
+        newThread: 'नई बातचीत',
+        browse: 'योजनाएँ देखें',
+        complaint: 'शिकायत लिखें',
+        startWith: 'यहाँ से शुरू करें',
+        starters: {
+            farmers: { label: 'किसानों के लिए मदद', query: 'छोटे और सीमांत किसानों के लिए केंद्र सरकार की कौन-सी मदद मिलती है, और आवेदन कैसे करें?' },
+            students: { label: 'छात्रों के लिए छात्रवृत्ति', query: 'कॉलेज का छात्र राष्ट्रीय छात्रवृत्ति पोर्टल पर कौन-सी छात्रवृत्ति के लिए आवेदन कर सकता है?' },
+            baby: { label: 'गर्भावस्था और नवजात शिशु', query: 'गर्भवती महिलाओं और नई माँओं के लिए कौन-सी सरकारी योजनाएँ हैं?' },
+            health: { label: 'इलाज का बीमा', query: 'कैसे देखूँ कि मेरा परिवार आयुष्मान भारत PM-JAY में शामिल है या नहीं?' },
+            business: { label: 'अपना काम शुरू करना', query: 'छोटा व्यापार शुरू करने के लिए कौन-सी सरकारी लोन योजनाएँ हैं?' },
+            work: { label: 'नौकरी या ट्रेनिंग', query: 'हुनर की ट्रेनिंग और नौकरी ढूँढने में कौन-सी सरकारी योजनाएँ मदद करती हैं?' },
+            home: { label: 'अपना घर', query: 'प्रधानमंत्री आवास योजना में घर के लिए आवेदन कैसे करें?' },
+            pension: { label: 'बुढ़ापे में पेंशन', query: 'बुज़ुर्गों के लिए कौन-सी पेंशन योजनाएँ हैं, और आवेदन कैसे करें?' },
+        },
+        signOut: 'साइन आउट',
+        logIn: 'लॉग इन या साइन अप',
+    },
+    hinglish: {
+        menu: 'InBridge menu',
+        tagline: 'Sarkari schemes ki independent guide',
+        closeMenu: 'Menu band karein',
+        actions: 'Actions',
+        newThread: 'Naya thread',
+        browse: 'Schemes dekhein',
+        complaint: 'Complaint likhein',
+        startWith: 'Yahan se shuru karein',
+        starters: {
+            farmers: { label: 'Kisaanon ke liye madad', query: 'Chhote aur marginal kisaanon ke liye central government ki kya madad milti hai, aur apply kaise karein?' },
+            students: { label: 'Students ke liye scholarship', query: 'College student National Scholarship Portal par kaunsi scholarships ke liye apply kar sakta hai?' },
+            baby: { label: 'Pregnancy aur naya baby', query: 'Pregnant mahilaon aur nayi maaon ke liye kaunsi sarkari schemes hain?' },
+            health: { label: 'Health cover', query: 'Kaise check karein ki meri family Ayushman Bharat PM-JAY mein covered hai?' },
+            business: { label: 'Business shuru karna', query: 'Chhota business shuru karne ke liye kaunsi sarkari loan schemes hain?' },
+            work: { label: 'Naukri ya training', query: 'Skill training aur naukri dhoondhne mein kaunsi sarkari schemes madad karti hain?' },
+            home: { label: 'Apna ghar', query: 'Pradhan Mantri Awas Yojana mein ghar ke liye apply kaise karein?' },
+            pension: { label: 'Budhape mein pension', query: 'Senior citizens ke liye kaunsi pension schemes hain, aur apply kaise karein?' },
+        },
+        signOut: 'Sign out',
+        logIn: 'Log in ya sign up',
+    },
+};
+
+const DESKTOP_QUERY = '(min-width: 1024px)';
+
+function subscribeDesktop(onChange: () => void) {
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+}
+
+/** True at the lg breakpoint, where the sidebar is static instead of a drawer. */
+export function useIsDesktop(): boolean {
+    return useSyncExternalStore(subscribeDesktop, () => window.matchMedia(DESKTOP_QUERY).matches, () => true);
+}
+
+/** React 19 supports `inert`, but the installed @types/react (18) does not declare it. */
+export function inertProps(on: boolean): React.HTMLAttributes<HTMLElement> {
+    return (on ? { inert: true } : {}) as unknown as React.HTMLAttributes<HTMLElement>;
+}
+
+const row = 'w-full flex items-center gap-3 min-h-11 px-3 rounded-lg text-sm text-left transition-colors duration-150 active:bg-bg';
+
 interface SidebarProps {
+    id: string;
+    language: Language;
+    /** The last save to this device failed; ThreadList shows a note. */
+    saveFailed: boolean;
     isOpen: boolean;
     onClose: () => void;
-    history: ChatHistoryItem[];
-    currentChatId: string | null;
-    onSelectChat: (id: string) => void;
-    onNewChat: () => void;
-    onDeleteChat: (id: string) => void;
-    onServiceClick: (message: string) => void;
+    threads: Thread[];
+    currentThreadId: string | null;
+    onSelectThread: (thread: Thread) => void;
+    onRenameThread: (id: string, title: string) => void;
+    onDeleteThread: (id: string) => void;
+    onClearThreads: () => void;
+    onNewThread: () => void;
+    onStarter: (query: string) => void;
+    onDraftComplaint: () => void;
+    /** Hidden entirely unless NEXT_PUBLIC_AUTH_ENABLED === 'true'. */
+    authEnabled: boolean;
     user: string | null;
     onOpenLogin: () => void;
     onLogout: () => void;
 }
 
-const SERVICES = [
-    {
-        label: 'Identity & ID Cards',
-        message: 'What are the available identity and ID card services in India? (e.g. Aadhaar, PAN, Voter ID)',
-        icon: (
-            <svg className="text-neutral-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="14" x="3" y="5" rx="2" ry="2" /><path d="M7 15h4M15 15h2M7 11h2M15 11h2" /></svg>
-        ),
-    },
-    {
-        label: 'Health & Wellness',
-        message: 'What government health and wellness schemes are available in India? (e.g. Ayushman Bharat, PMJAY)',
-        icon: (
-            <svg className="text-neutral-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /><path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08v0c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.79 0l2.96 2.66" /></svg>
-        ),
-    },
-    {
-        label: 'Education & Grants',
-        message: 'What education grants, scholarships, and schemes are available from the Government of India?',
-        icon: (
-            <svg className="text-neutral-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" /></svg>
-        ),
-    },
-    {
-        label: 'Official Documents',
-        message: 'How can I apply for official government documents in India? (e.g. Passport, Birth Certificate, Domicile)',
-        icon: (
-            <svg className="text-neutral-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><line x1="16" x2="8" y1="13" y2="13" /><line x1="16" x2="8" y1="17" y2="17" /><line x1="10" x2="8" y1="9" y2="9" /></svg>
-        ),
-    },
-];
+export function Sidebar({
+    id, language, saveFailed, isOpen, onClose, threads, currentThreadId, onSelectThread, onRenameThread, onDeleteThread,
+    onClearThreads, onNewThread, onStarter, onDraftComplaint, authEnabled, user, onOpenLogin, onLogout,
+}: SidebarProps) {
+    const copy = SIDEBAR_COPY[language];
+    const isDesktop = useIsDesktop();
+    const closeRef = useRef<HTMLButtonElement>(null);
+    const drawerOpen = isOpen && !isDesktop;
 
-export function Sidebar({ isOpen, onClose, history, currentChatId, onSelectChat, onNewChat, onDeleteChat, onServiceClick, user, onOpenLogin, onLogout }: SidebarProps) {
+    // Drawer: move focus in on open, close on Escape. Focus return is handled by the opener.
+    useEffect(() => {
+        if (!drawerOpen) return;
+        closeRef.current?.focus();
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [drawerOpen, onClose]);
+
+    // Close first, so an action that moves focus (e.g. into the composer) wins over
+    // the drawer's focus-return to the menu button.
+    const thenClose = (fn: () => void) => () => { onClose(); fn(); };
 
     return (
         <>
-            {/* Mobile overlay */}
-            {isOpen && (
-                <div
-                    className="lg:hidden fixed inset-0 bg-white/20 z-20 transition-opacity"
-                    onClick={onClose}
-                    aria-hidden="true"
-                />
+            {drawerOpen && (
+                <div className="fixed inset-0 z-20 bg-black/60" onClick={onClose} aria-hidden="true" />
             )}
 
-            {/* Sidebar Container */}
-            <div
-                className={`fixed lg:static inset-y-0 left-0 z-30 w-[260px] bg-[#171717] border-r border-neutral-800 transform transition-transform duration-200 ease-in-out flex flex-col h-full
-          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}
+            <aside
+                id={id}
+                aria-label={copy.menu}
+                {...inertProps(!isOpen && !isDesktop)}
+                className={`fixed lg:static inset-y-0 left-0 z-30 w-72 max-w-[85vw] bg-surface border-r border-line flex flex-col h-full transition-transform duration-200 ease-out
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
             >
-
-                {/* Header - Brand Logo */}
-                <div className="p-5 flex items-start gap-3">
-                    <div className="w-8 h-8 mt-0.5 rounded shadow-sm shrink-0 overflow-hidden relative border border-neutral-800 flex items-center justify-center">
-                        <img src="/logo.jpg" alt="InBridge Logo" className="w-full h-full object-cover object-center" />
+                <div className="px-4 pt-4 pb-3 flex items-start gap-3">
+                    <div className="flex-1 min-w-0 px-1">
+                        <Link href="/" aria-label="InBridge" className="block w-fit py-1 text-fg rounded-md hover:opacity-80 transition-opacity">
+                            <Logo />
+                        </Link>
+                        <span className="block text-[13px] text-muted leading-snug mt-1.5 text-balance">{copy.tagline}</span>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-xl font-bold font-serif tracking-tight text-neutral-100 leading-tight">InBridge</span>
-                        <span className="text-[10px] text-neutral-500 font-medium tracking-wide leading-tight mt-0.5 max-w-[170px]">Public service at the speed of life</span>
-                    </div>
+                    <button
+                        ref={closeRef}
+                        type="button"
+                        onClick={onClose}
+                        aria-label={copy.closeMenu}
+                        className="lg:hidden -mr-2 -mt-1 inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.94] focus-visible:rounded-full!"
+                    >
+                        <X className="w-5 h-5" aria-hidden="true" />
+                    </button>
                 </div>
 
-                {/* Navigation Lists */}
-                <div className="flex-1 overflow-y-auto px-3 pb-4 flex flex-col gap-6 mt-2">
-
-                    {/* SERVICES SECTION */}
-                    <div>
-                        <ul className="space-y-1">
+                <div className="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-5">
+                    <nav aria-label={copy.actions}>
+                        <ul className="space-y-0.5">
                             <li>
-                                <button onClick={onNewChat} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 rounded-lg transition-colors font-medium">
-                                    <svg className="text-neutral-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path d="M8 12h8" /></svg>
-                                    New Thread
+                                <button type="button" onClick={thenClose(onNewThread)} aria-keyshortcuts="Control+Shift+O Meta+Shift+O" className={`${row} text-fg font-medium hover:bg-surface-2`}>
+                                    <SquarePen className="w-4 h-4 text-muted shrink-0" aria-hidden="true" />
+                                    <span className="flex-1">{copy.newThread}</span>
+                                    <kbd className="hidden lg:inline text-[13px] text-muted font-sans" aria-hidden="true">Ctrl/⌘ ⇧ O</kbd>
                                 </button>
                             </li>
-                            {SERVICES.map((service) => (
-                                <li key={service.label}>
-                                    <button
-                                        onClick={() => {
-                                            onServiceClick(service.message);
-                                            onClose();
-                                        }}
-                                        className="w-full flex items-center gap-3 px-3 py-2 text-[13px] text-neutral-400 hover:bg-neutral-800 rounded-lg transition-colors font-medium group"
-                                    >
-                                        <span className="text-[#737373] group-hover:text-neutral-400 transition-colors">{service.icon}</span>
-                                        {service.label}
+                            <li>
+                                <Link href="/services" className={`${row} text-fg hover:bg-surface-2`}>
+                                    <BookOpen className="w-4 h-4 text-muted shrink-0" aria-hidden="true" />
+                                    {copy.browse}
+                                </Link>
+                            </li>
+                            <li>
+                                <button type="button" onClick={thenClose(onDraftComplaint)} className={`${row} text-fg hover:bg-surface-2`}>
+                                    <MessageSquareWarning className="w-4 h-4 text-muted shrink-0" aria-hidden="true" />
+                                    {copy.complaint}
+                                </button>
+                            </li>
+                        </ul>
+                    </nav>
+
+                    <section aria-labelledby="starters-heading">
+                        <h2 id="starters-heading" className="px-3 mb-1 text-sm font-medium text-muted">{copy.startWith}</h2>
+                        <ul className="space-y-0.5">
+                            {STARTER_ICONS.map(({ key, icon: Icon }) => (
+                                <li key={key}>
+                                    <button type="button" onClick={thenClose(() => onStarter(copy.starters[key].query))} className={`${row} text-muted hover:text-fg hover:bg-surface-2`}>
+                                        <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                                        {copy.starters[key].label}
                                     </button>
                                 </li>
                             ))}
                         </ul>
-                    </div>
+                    </section>
 
-                    {/* RECENT SECTION */}
-                    <div className="pt-4 border-t border-neutral-800">
-                        <div className="flex items-center justify-between px-3 mb-2">
-                            <h3 className="text-[11px] font-bold text-[#737373] uppercase tracking-wider">Library</h3>
-                        </div>
-
-                        <ul className="space-y-0.5">
-                            {!user ? (
-                                <li className="px-3 py-2 text-[13px] text-[#737373]">Log in to view history</li>
-                            ) : history.length === 0 ? (
-                                <li className="px-3 py-2 text-[13px] text-[#737373]">No recent threads</li>
-                            ) : (
-                                history.map((item) => (
-                                    <li key={item.id} className="group relative">
-                                        <button
-                                            onClick={() => onSelectChat(item.id)}
-                                            className={`w-full flex items-center gap-3 px-3 py-2 text-[13px] rounded-lg transition-colors overflow-hidden text-ellipsis whitespace-nowrap
-                                                ${currentChatId === item.id
-                                                    ? 'bg-neutral-800 text-neutral-100 font-semibold'
-                                                    : 'text-neutral-400 hover:bg-neutral-800 font-medium'
-                                                }`}
-                                        >
-                                            <svg className="text-[#737373] flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                                            <span className="truncate">{item.title}</span>
-                                        </button>
-                                    </li>
-                                ))
-                            )}
-                        </ul>
+                    <div className="pt-2">
+                        <ThreadList
+                            language={language}
+                            saveFailed={saveFailed}
+                            threads={threads}
+                            currentId={currentThreadId}
+                            onSelect={(t) => { onSelectThread(t); onClose(); }}
+                            onRename={onRenameThread}
+                            onDelete={onDeleteThread}
+                            onClearAll={onClearThreads}
+                        />
                     </div>
                 </div>
 
-                {/* Footer info area */}
-                {user ? (
-                    <div className="p-4 mx-3 mb-4 rounded-xl border border-neutral-800 bg-[#0a0a0a] flex items-center gap-3 shadow-sm hover:border-neutral-700 transition-colors group relative">
-                        <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center text-xs font-bold shrink-0">
-                            {user.substring(0, 2).toUpperCase()}
+                {authEnabled && (
+                    user ? (
+                        <div className="m-3 p-3 rounded-lg border border-line bg-bg flex items-center gap-3">
+                            <span className="w-8 h-8 rounded-full bg-fg text-bg flex items-center justify-center text-xs font-bold shrink-0" aria-hidden="true">
+                                {user.substring(0, 2).toUpperCase()}
+                            </span>
+                            <span className="flex-1 min-w-0 text-sm font-medium text-fg truncate">{user}</span>
+                            <button
+                                type="button"
+                                onClick={onLogout}
+                                aria-label={copy.signOut}
+                                title={copy.signOut}
+                                className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-muted hover:text-fg hover:bg-surface-2"
+                            >
+                                <LogOut className="w-4 h-4" aria-hidden="true" />
+                            </button>
                         </div>
-                        <div className="flex-1 overflow-hidden">
-                            <div className="text-[13px] font-semibold text-neutral-200 truncate leading-tight">{user}</div>
-                            <div className="text-[11px] text-neutral-500 font-medium truncate mt-0.5">Pro Member</div>
+                    ) : (
+                        <div className="p-3">
+                            <button
+                                type="button"
+                                onClick={onOpenLogin}
+                                className="w-full min-h-11 px-4 rounded-lg border border-line text-sm font-semibold text-fg hover:bg-surface-2 transition-colors"
+                            >
+                                {copy.logIn}
+                            </button>
                         </div>
-                        <button onClick={onLogout} title="Sign Out" className="opacity-0 group-hover:opacity-100 absolute right-3 p-1.5 rounded-md hover:bg-neutral-800 text-neutral-500 transition-all">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></svg>
-                        </button>
-                    </div>
-                ) : (
-                    <div className="px-3 mb-4">
-                        <button
-                            onClick={onOpenLogin}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl text-sm font-semibold text-neutral-200 transition-colors"
-                        >
-                            Sign Up
-                        </button>
-                    </div>
+                    )
                 )}
-
-            </div>
+            </aside>
         </>
     );
 }

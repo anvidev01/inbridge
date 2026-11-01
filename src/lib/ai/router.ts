@@ -1,106 +1,229 @@
-import { createAnthropicStream } from './anthropic';
-import { createGeminiStream } from './gemini';
-import { createGroqStream } from './groq';
+/**
+ * LLM failover router.
+ *
+ * Provider streams fail lazily: the HTTP call, a 429 or a retired model id
+ * only surface once the stream is iterated. The old router returned the
+ * stream unread, so any of those produced an empty answer and no failover.
+ * Now each provider is probed for its first non-empty text chunk before it is
+ * committed to; anything that fails before that point falls through to the
+ * next provider in the chain. After the first chunk the answer is already
+ * visible to the user, so a later error is surfaced rather than retried.
+ *
+ * Chain order comes from chain.ts (providers without keys are skipped), and
+ * providers whose circuit breaker is open in the Go backend are skipped via
+ * provider-health.ts.
+ */
 
-interface Message {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
+import { log } from '../observability/logger';
+import { classifyError, type LLMProvider, type TelemetryBatch } from '../observability/telemetry';
+import { streamAnthropic } from './anthropic';
+import { buildChain } from './chain';
+import { streamGemini } from './gemini';
+import { type ProviderInput, type ProviderStream } from './generation';
+import { streamGroq } from './groq';
+import { applyBreakerState, availableProviders } from './provider-health';
+import { ThinkStripper } from './stream-filters';
+
+/** Thrown when no provider is configured, or every provider failed before its first token. */
+export class ProviderUnavailableError extends Error {
+    constructor(message: string, readonly lastError?: unknown) {
+        super(message);
+        this.name = 'ProviderUnavailableError';
+    }
+}
+
+export interface RouterDeps {
+    providers: Record<LLMProvider, ProviderStream>;
+    buildChain: (requested?: LLMProvider) => LLMProvider[];
+    availableProviders: () => Promise<LLMProvider[] | null>;
+    /**
+     * Most time any one provider gets for its first token before failing
+     * over. The real limit per attempt is the smaller of this and the time
+     * left before RouteOptions.firstTokenDeadline.
+     */
+    firstTokenTimeoutMs: number;
+}
+
+/**
+ * Default per-provider first-token cap. Override with LLM_FIRST_TOKEN_TIMEOUT_MS.
+ * 18 s leaves room for the AI SDK's own retry-with-backoff on a 429 (Groq's
+ * free tier limits tokens per minute); the request deadline still bounds the
+ * total so the route ends inside Vercel's 60 s.
+ */
+export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 18_000;
+
+function envTimeout(): number {
+    const n = Number(process.env.LLM_FIRST_TOKEN_TIMEOUT_MS);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_FIRST_TOKEN_TIMEOUT_MS;
+}
+
+const DEFAULT_DEPS: RouterDeps = {
+    providers: { anthropic: streamAnthropic, gemini: streamGemini, groq: streamGroq },
+    buildChain: (requested) => buildChain(requested),
+    availableProviders,
+    // A per-provider cap only. Retrieval runs before the router and is not
+    // covered by it; the route passes firstTokenDeadline so retrieval time
+    // plus every failover attempt still leaves room to generate the answer
+    // inside the function's maxDuration.
+    firstTokenTimeoutMs: envTimeout(),
+};
+
+export interface RouteOptions {
+    requestedProvider?: LLMProvider;
+    telemetry?: TelemetryBatch;
+    /**
+     * Epoch ms by which some provider must have produced its first token.
+     * Each attempt gets min(firstTokenTimeoutMs, time left); once the deadline
+     * has passed no further provider is tried. Build it with firstTokenDeadline.
+     */
+    firstTokenDeadline?: number;
+}
+
+/**
+ * Deadline for the first token: route start + the function's maxDuration,
+ * minus the time reserved for generating the rest of the answer after the
+ * first token arrives.
+ */
+export function firstTokenDeadline(routeStartedAt: number, maxDurationMs: number, generationReserveMs: number): number {
+    return routeStartedAt + maxDurationMs - generationReserveMs;
+}
+
+/** Time the next attempt may wait for its first token: min(cap, time left), never negative. */
+export function attemptTimeoutMs(capMs: number, deadline: number | undefined, now: number): number {
+    if (deadline === undefined) return capMs;
+    return Math.max(0, Math.min(capMs, deadline - now));
+}
+
+export interface RoutedStream {
+    provider: LLMProvider;
+    /** Answer text, <think> blocks removed, starting with the probed first chunk. */
+    stream: AsyncIterable<string>;
+}
+
+/** True when no provider has an API key; lets the route answer 503 before streaming. */
+export function noProviderConfigured(deps: Pick<RouterDeps, 'buildChain'> = DEFAULT_DEPS): boolean {
+    return deps.buildChain().length === 0;
+}
+
+class FirstTokenTimeout extends Error {
+    constructor() {
+        super('first token timed out');
+        this.name = 'FirstTokenTimeout';
+    }
 }
 
 export async function routeChatStream(
-    messages: Message[],
-    requestedProvider?: 'anthropic' | 'gemini' | 'groq',
-    systemPromptOverride?: string
-) {
-    const defaultProvider = process.env.ACTIVE_AI_PROVIDER || 'anthropic';
-    const provider = requestedProvider || defaultProvider;
+    input: ProviderInput,
+    options: RouteOptions = {},
+    deps: RouterDeps = DEFAULT_DEPS
+): Promise<RoutedStream> {
+    const configured = deps.buildChain(options.requestedProvider);
+    if (configured.length === 0) {
+        throw new ProviderUnavailableError('No LLM provider is configured');
+    }
 
-    const tryAnthropic = async () => {
-        if (process.env.ANTHROPIC_API_KEY) {
-            console.log("Trying Anthropic stream...");
-            return createAnthropicStream(messages, undefined, systemPromptOverride);
+    const { chain, skipped } = applyBreakerState(configured, await deps.availableProviders());
+    if (skipped.length > 0) {
+        log.info('Skipping providers with open circuit breakers', { skipped });
+    }
+
+    let lastError: unknown;
+    for (let i = 0; i < chain.length; i++) {
+        const provider = chain[i];
+        const started = Date.now();
+
+        const timeoutMs = attemptTimeoutMs(deps.firstTokenTimeoutMs, options.firstTokenDeadline, started);
+        if (timeoutMs <= 0) {
+            log.warn('First-token deadline passed; not trying further providers', {
+                skipped: chain.slice(i),
+            });
+            break;
         }
-        throw new Error("Anthropic key missing");
-    };
 
-    const tryGemini = async () => {
-        if (process.env.GOOGLE_GEMINI_API_KEY) {
-            console.log("Trying Gemini stream...");
-            return await createGeminiStream(messages, undefined, systemPromptOverride);
-        }
-        throw new Error("Gemini key missing");
-    };
+        // One controller per attempt, so a first-token timeout can cancel this
+        // provider's request without cancelling the user's whole request.
+        const controller = new AbortController();
+        const onUserAbort = () => controller.abort();
+        input.signal?.addEventListener('abort', onUserAbort, { once: true });
+        const detach = () => input.signal?.removeEventListener('abort', onUserAbort);
 
-    const tryGroq = async () => {
-        if (process.env.GROQ_API_KEY) {
-            console.log("Trying Groq stream...");
-            return await createGroqStream(messages, undefined, systemPromptOverride);
-        }
-        throw new Error("Groq key missing");
-    };
+        const iterator = deps.providers[provider]({ ...input, signal: controller.signal })[Symbol.asyncIterator]();
+        const stripper = new ThinkStripper();
+        let timer: ReturnType<typeof setTimeout> | undefined;
 
-    if (provider === 'gemini') {
         try {
-            return await tryGemini();
+            if (input.signal?.aborted) throw input.signal.reason ?? new Error('aborted');
+            const timeout = new Promise<never>((_, reject) => {
+                timer = setTimeout(() => {
+                    controller.abort();
+                    reject(new FirstTokenTimeout());
+                }, timeoutMs);
+            });
+            const first = await Promise.race([probeFirstText(iterator, stripper), timeout]);
+            clearTimeout(timer);
+
+            options.telemetry?.llmSuccess(provider, Date.now() - started);
+            log.info('LLM provider streaming', { provider, first_token_ms: Date.now() - started });
+            return { provider, stream: continueStream(first, iterator, stripper, detach) };
         } catch (error) {
-            console.error("Primary provider (Gemini) failed:", error);
-            if (defaultProvider === 'both') {
-                try {
-                    console.log("Falling back to Anthropic...");
-                    return await tryAnthropic();
-                } catch (fallbackError) {
-                    console.error("Secondary fallback (Anthropic) failed:", fallbackError);
-                }
-            }
-            try {
-                console.log("Falling back to tertiary provider (Groq)...");
-                return await tryGroq();
-            } catch (tertiaryError) {
-                console.error("Tertiary provider (Groq) failed:", tertiaryError);
-                throw error;
-            }
+            clearTimeout(timer);
+            detach();
+            controller.abort();
+            void iterator.return?.(undefined)?.catch(() => {});
+
+            // The user pressed Stop (or left): not a provider failure, no failover.
+            if (input.signal?.aborted) throw error;
+
+            const kind = error instanceof FirstTokenTimeout ? 'timeout' : classifyError(error);
+            // A timeout that only fired because the request's own deadline
+            // shortened the wait says nothing about the provider's health, so
+            // it is not reported to telemetry (which feeds the circuit breakers).
+            const cutByDeadline = error instanceof FirstTokenTimeout && timeoutMs < deps.firstTokenTimeoutMs;
+            if (!cutByDeadline) options.telemetry?.llmError(provider, Date.now() - started, kind);
+            log.warn('LLM provider failed before first token', { provider, kind, cut_by_deadline: cutByDeadline, error });
+
+            const next = chain[i + 1];
+            if (next) options.telemetry?.failover(provider, next, kind);
+            lastError = error;
         }
     }
 
-    if (provider === 'groq') {
-        try {
-            return await tryGroq();
-        } catch (error) {
-            console.error("Primary provider (Groq) failed:", error);
-            try {
-                console.log("Falling back to Anthropic...");
-                return await tryAnthropic();
-            } catch (fallbackError) {
-                try {
-                    console.log("Falling back to Gemini...");
-                    return await tryGemini();
-                } catch (tertiaryError) {
-                    throw error;
-                }
-            }
-        }
-    }
+    throw new ProviderUnavailableError('Every LLM provider failed', lastError);
+}
 
-    // Default to Anthropic
-    try {
-        return await tryAnthropic();
-    } catch (error) {
-        console.error("Primary provider (Anthropic) failed:", error);
-        if (defaultProvider === 'both') {
-            try {
-                console.log("Falling back to Gemini...");
-                return await tryGemini();
-            } catch (fallbackError) {
-                console.error("Secondary fallback (Gemini) failed:", fallbackError);
-            }
+/** Reads until the first non-whitespace answer text; throws if the stream ends empty. */
+async function probeFirstText(iterator: AsyncIterator<string>, stripper: ThinkStripper): Promise<string> {
+    for (;;) {
+        const { value, done } = await iterator.next();
+        if (done) {
+            const rest = stripper.flush().trimStart();
+            if (rest) return rest;
+            throw new Error('Provider returned an empty response');
         }
-        try {
-            console.log("Falling back to tertiary provider (Groq)...");
-            return await tryGroq();
-        } catch (tertiaryError) {
-            console.error("Tertiary provider (Groq) failed:", tertiaryError);
-            throw error;
-        }
+        const text = stripper.push(value).trimStart();
+        if (text) return text;
     }
 }
 
+async function* continueStream(
+    first: string,
+    iterator: AsyncIterator<string>,
+    stripper: ThinkStripper,
+    detach: () => void
+): AsyncGenerator<string> {
+    try {
+        yield first;
+        for (;;) {
+            const { value, done } = await iterator.next();
+            if (done) break;
+            const text = stripper.push(value);
+            if (text) yield text;
+        }
+        const rest = stripper.flush();
+        if (rest) yield rest;
+    } finally {
+        detach();
+        // Stops the provider request if the consumer quit early.
+        void iterator.return?.(undefined)?.catch(() => {});
+    }
+}

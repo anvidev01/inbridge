@@ -1,55 +1,46 @@
 /**
- * app/services/[slug]/page.tsx — Service Detail Page
- * GIGW 3.0 · WCAG 2.2 AA
- * Shows eligibility, required documents, steps, and CTA.
+ * app/services/[slug]/page.tsx: one scheme.
+ * Built from the myScheme snapshot (lib/schemes.ts). Shows only what the
+ * dataset holds: no helplines, fees, timelines, documents or eligibility,
+ * because the dataset does not contain them. Those come from the official
+ * page or from a cited chat answer.
  */
-import type { Metadata } from "next";
-import Link from "next/link";
-import { notFound } from "next/navigation";
+import type { CSSProperties, ReactNode } from 'react';
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { notFound, redirect } from 'next/navigation';
+import { ArrowUpRight } from 'lucide-react';
+import { SiteHeader } from '@/components/site/SiteHeader';
+import { SiteFooter } from '@/components/site/SiteFooter';
+import { Reveal } from '@/components/site/Reveal';
+import { AXIS, BUTTON, Masthead, PAGE_X, PhotoCredits, TEXT_LINK, TYPE, type MastheadPhotos } from '@/components/site/InfoPage';
+import type { PhotoKey } from '@/lib/photos';
+import {
+    DATASET_LABEL,
+    askHref,
+    audienceLabel,
+    categoryLabel,
+    getRelatedSchemes,
+    getScheme,
+    servicesHref,
+    type Scheme,
+} from '@/lib/schemes';
 
-/* ── Static service catalogue ─────────────────────────────── */
-const SERVICES: Record<string, {
-    title: string; subtitle: string; icon: string; category: string;
-    description: string; eligibility: string[]; documents: string[];
-    steps: string[]; fee: string; timeline: string; slug: string;
-}> = {
-    "aadhaar": {
-        slug: "aadhaar", icon: "🪪",
-        title: "Apply for Aadhaar Card",
-        subtitle: "Unique Biometric Identity · UIDAI",
-        category: "personal",
-        description: "Aadhaar is your 12-digit unique biometric identity issued by UIDAI. It is accepted as proof of identity and address across India for all government and private services.",
-        eligibility: ["Any resident of India (citizen or non-citizen)", "Infants and children can also enrol", "No age limit"],
-        documents: ["Proof of Identity (Passport / Driving Licence / Voter ID)", "Proof of Address (Utility bill / Bank statement)", "Date of Birth proof (Birth Certificate / School certificate)"],
-        steps: ["Book an appointment at nearest Aadhaar Enrolment Centre", "Visit centre with original documents", "Biometric capture (fingerprint + iris + photo)", "Receive Enrolment ID via SMS", "Download e-Aadhaar or receive physical card by post"],
-        fee: "Free",
-        timeline: "90 days",
-    },
-    "pan": {
-        slug: "pan", icon: "💳",
-        title: "Update PAN Card Details",
-        subtitle: "Permanent Account Number · Income Tax Dept",
-        category: "personal",
-        description: "Update your PAN card details like name, date of birth, or address. Required for all financial transactions above ₹50,000.",
-        eligibility: ["Existing PAN card holders", "Indian citizens and foreign nationals"],
-        documents: ["Existing PAN card", "Identity proof", "Address proof", "Date of birth proof"],
-        steps: ["Fill online correction form (49-A or 49-AA)", "Upload self-attested documents", "Pay processing fee", "Verify via Aadhaar OTP or digital signature", "Receive updated PAN card within 15 days"],
-        fee: "₹107 (Indian address) / ₹1,017 (Foreign address)",
-        timeline: "15 working days",
-    },
-    "pm-kisan": {
-        slug: "pm-kisan", icon: "🌾",
-        title: "PM-KISAN Status",
-        subtitle: "Pradhan Mantri Kisan Samman Nidhi",
-        category: "financial",
-        description: "Check the status of your PM-KISAN benefit of ₹6,000 per year paid in three equal instalments directly to farmer bank accounts.",
-        eligibility: ["Small and marginal farmers", "Land holding families with cultivable land"],
-        documents: ["Aadhaar card", "Bank account number linked to Aadhaar", "Land records"],
-        steps: ["Enter Aadhaar number or mobile number", "View instalment payment history", "Check pending KYC status", "Download payment receipt"],
-        fee: "Free",
-        timeline: "Instant status check",
-    },
+/**
+ * The old page hard-coded /services/aadhaar and /services/pan. Those are
+ * identity documents, not schemes, so they are not in the dataset. Rather than
+ * 404 old links, send them to the chat with the question pre-filled.
+ */
+const LEGACY_SLUGS: Record<string, string> = {
+    aadhaar: 'How do I enrol for Aadhaar or update my Aadhaar details?',
+    pan: 'How do I apply for a PAN card or correct my PAN details?',
 };
+
+// Pages render on first request and are then cached; 4,739 pages are not prebuilt.
+export const dynamicParams = true;
+export function generateStaticParams() {
+    return [];
+}
 
 interface PageProps {
     params: Promise<{ slug: string }>;
@@ -57,165 +48,212 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
     const { slug } = await params;
-    const service = SERVICES[slug];
-    if (!service) return { title: "Service Not Found" };
+    const scheme = getScheme(slug);
+    if (!scheme) return { title: 'Scheme not found' };
     return {
-        title: service.title,
-        description: service.description,
+        title: scheme.name,
+        description: scheme.brief,
+        alternates: { canonical: `/services/${scheme.slug}` },
     };
 }
 
-export default async function ServiceDetailPage({ params }: PageProps) {
-    const { slug } = await params;
-    const service = SERVICES[slug];
-    if (!service) notFound();
+/**
+ * Masthead photographs: the one that leads is chosen from the scheme's first
+ * area, the rest follow in a fixed order. They show the world the area
+ * touches (a field, a school gate, a post office counter), never the scheme
+ * itself or the people it serves.
+ */
+const LEAD_PHOTO: Record<string, PhotoKey> = {
+    'Agriculture,Rural & Environment': 'farmer',
+    'Education & Learning': 'village-school',
+    'Banking,Financial Services and Insurance': 'post-office',
+    'Transport & Infrastructure': 'station',
+    'Travel & Tourism': 'station',
+};
+const PHOTO_ORDER: PhotoKey[] = ['bridge-crowd', 'farmer', 'post-office', 'village-school', 'station', 'bridge-fog'];
 
+function mastheadPhotos(scheme: Scheme): MastheadPhotos {
+    const lead = LEAD_PHOTO[scheme.categories[0] ?? ''] ?? 'bridge-crowd';
+    const [a, b, c] = PHOTO_ORDER.filter((p) => p !== lead);
+    return [lead, a, b, c];
+}
+
+/**
+ * Long names step down so the title holds to two lines: the lead step on a
+ * phone, the heading step from tablet up (no extra type step). Names over
+ * ~60 characters can still run longer; that is the dataset, not the layout.
+ */
+function titleSize(name: string): string {
+    if (name.length <= 26) return TYPE.display;
+    return 'text-[1.375rem] leading-[1.15] tracking-[-0.015em] sm:text-[length:clamp(1.75rem,0.9rem_+_1.9vw,2.5rem)] sm:leading-[1.1] sm:tracking-[-0.02em]';
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
     return (
-        <div className="max-w-screen-lg mx-auto px-4 py-8">
-            {/* Breadcrumb */}
-            <nav aria-label="Breadcrumb" className="mb-6">
-                <ol className="flex items-center gap-2 text-sm text-[#616161]">
-                    <li><Link href="/" className="hover:text-[#1A237E] hover:underline">Home</Link></li>
-                    <li aria-hidden="true">›</li>
-                    <li><Link href="/services" className="hover:text-[#1A237E] hover:underline">Services</Link></li>
-                    <li aria-hidden="true">›</li>
-                    <li className="font-semibold text-[#1A237E]" aria-current="page">{service.title}</li>
-                </ol>
-            </nav>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main content */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Service header */}
-                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                        <div className="flex items-center gap-4 mb-4">
-                            <div
-                                className="w-16 h-16 rounded-2xl bg-[#E8EAF6] flex items-center justify-center text-3xl"
-                                aria-hidden="true"
-                            >
-                                {service.icon}
-                            </div>
-                            <div>
-                                <h1 className="text-xl font-black text-[#1A237E] leading-tight">{service.title}</h1>
-                                <p className="text-sm text-[#616161] mt-1">{service.subtitle}</p>
-                            </div>
-                        </div>
-                        <p className="text-sm text-[#111111] leading-relaxed">{service.description}</p>
-
-                        {/* Fee + Timeline chips */}
-                        <div className="flex flex-wrap gap-3 mt-4">
-                            <div className="flex items-center gap-1.5 bg-[#E8F5E9] text-[#2E7D32] text-xs font-bold px-3 py-1.5 rounded-full">
-                                <svg aria-hidden="true" width="12" height="12" fill="none" viewBox="0 0 12 12">
-                                    <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.4" />
-                                    <path d="M6 3v3.5l2 1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                                </svg>
-                                Timeline: {service.timeline}
-                            </div>
-                            <div className="flex items-center gap-1.5 bg-[#E8EAF6] text-[#1A237E] text-xs font-bold px-3 py-1.5 rounded-full">
-                                💰 Fee: {service.fee}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* How to Apply */}
-                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                        <h2 className="text-base font-bold text-[#1A237E] mb-4">How to Apply</h2>
-                        <ol className="space-y-3">
-                            {service.steps.map((step, idx) => (
-                                <li key={idx} className="flex items-start gap-3">
-                                    <span
-                                        aria-hidden="true"
-                                        className="shrink-0 w-7 h-7 rounded-full bg-[#1A237E] text-white text-xs font-bold flex items-center justify-center mt-0.5"
-                                    >
-                                        {idx + 1}
-                                    </span>
-                                    <p className="text-sm text-[#111111] leading-relaxed pt-0.5">{step}</p>
-                                </li>
-                            ))}
-                        </ol>
-                    </div>
-
-                    {/* Documents Required */}
-                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                        <h2 className="text-base font-bold text-[#1A237E] mb-3">Documents Required</h2>
-                        <ul className="space-y-2" aria-label="Required documents">
-                            {service.documents.map((doc) => (
-                                <li key={doc} className="flex items-start gap-2 text-sm text-[#111111]">
-                                    <svg aria-hidden="true" className="shrink-0 mt-0.5 text-[#2E7D32]" width="16" height="16" fill="none" viewBox="0 0 16 16">
-                                        <circle cx="8" cy="8" r="7" fill="#E8F5E9" />
-                                        <path d="M5 8l2 2 4-3.5" stroke="#2E7D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                    {doc}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-
-                    {/* Eligibility */}
-                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-                        <h2 className="text-base font-bold text-[#1A237E] mb-3">Who Can Apply</h2>
-                        <ul className="space-y-2" aria-label="Eligibility criteria">
-                            {service.eligibility.map((item) => (
-                                <li key={item} className="flex items-start gap-2 text-sm text-[#111111]">
-                                    <span aria-hidden="true" className="text-[#1A237E] mt-0.5">▶</span>
-                                    {item}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                </div>
-
-                {/* Sidebar CTA */}
-                <aside aria-label="Apply for this service">
-                    <div className="sticky top-6 bg-white rounded-2xl p-6 border border-[#1A237E]/15 shadow-sm space-y-4">
-                        <h2 className="text-base font-bold text-[#1A237E]">Ready to Apply?</h2>
-                        <p className="text-sm text-[#616161] leading-relaxed">
-                            Complete your application in under 10 minutes with documents ready.
-                        </p>
-
-                        <Link
-                            href={`/apply/${slug}`}
-                            className="
-                block w-full text-center
-                touch-target py-3.5 rounded-xl
-                bg-[#2E7D32] text-white font-bold text-sm
-                hover:bg-green-700 active:scale-95
-                transition-all duration-150
-              "
-                            aria-label={`Start your ${service.title} application`}
-                        >
-                            Start Application →
-                        </Link>
-
-                        <Link
-                            href="/status"
-                            className="
-                block w-full text-center
-                touch-target py-3 rounded-xl
-                border-2 border-[#1A237E] text-[#1A237E] font-semibold text-sm
-                hover:bg-[#1A237E] hover:text-white
-                transition-all duration-150
-              "
-                        >
-                            Check Existing Status
-                        </Link>
-
-                        {/* Helpline */}
-                        <p className="text-xs text-[#616161] text-center pt-2">
-                            Need help?{" "}
-                            <a href="tel:1800111555" className="text-[#1A237E] font-semibold underline">
-                                1800-111-555
-                            </a>{" "}
-                            (Toll-free, 24×7)
-                        </p>
-                    </div>
-                </aside>
-            </div>
-        </div>
+        <tr className="border-b border-line align-top">
+            <th scope="row" className="w-32 sm:w-44 py-5 pr-6 text-left text-sm font-medium text-muted">{label}</th>
+            <td className="py-5 text-lg leading-[1.55] text-fg break-words">{children}</td>
+        </tr>
     );
 }
 
-/* Static params for build-time generation */
-export function generateStaticParams() {
-    return Object.keys(SERVICES).map((slug) => ({ slug }));
+/** A full-bleed field of one tone: cancels the page margin, then restores it inside. */
+const BAND = '-mx-5 sm:-mx-8 lg:-mx-12 px-5 sm:px-8 lg:px-12 py-16 sm:py-20';
+
+const NOT_STATED = <span className="text-muted">Not stated in the dataset</span>;
+
+export default async function SchemeDetailPage({ params }: PageProps) {
+    const { slug } = await params;
+
+    const legacy = LEGACY_SLUGS[slug];
+    if (legacy) redirect(askHref(legacy));
+
+    const scheme = getScheme(slug);
+    if (!scheme) notFound();
+
+    const askQuestion = `Tell me about ${scheme.name}: who it is for, what it offers and how to apply.`;
+    const primaryCategory = scheme.categories[0];
+    // Same issuer and state first, then shared tags, then by name (see rankRelated in lib/schemes.ts).
+    const related = getRelatedSchemes(scheme, 3);
+    const photos = mastheadPhotos(scheme);
+
+    return (
+        <>
+            <SiteHeader current="services" />
+            <Reveal />
+            <main id="main-content">
+                <Masthead photos={photos} variant="lead" />
+                <div className={PAGE_X}>
+                    <header className={`${AXIS} pt-10 sm:pt-14 lg:pt-20`}>
+                        <nav aria-label="Breadcrumb" className="lg:col-start-1 lg:row-start-1 lg:pr-16">
+                            <ol className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
+                                <li><Link href="/" className="inline-flex items-center min-h-11 transition-colors hover:text-fg">Home</Link></li>
+                                <li aria-hidden="true">/</li>
+                                <li><Link href="/services" className="inline-flex items-center min-h-11 transition-colors hover:text-fg">Schemes</Link></li>
+                                <li aria-hidden="true">/</li>
+                                <li aria-current="page" className="text-fg truncate max-w-[14rem] sm:max-w-xs">{scheme.short || scheme.name}</li>
+                            </ol>
+                        </nav>
+
+                        <div className="mt-6 lg:mt-0 lg:col-start-2 lg:row-start-1 min-w-0">
+                            <h1 className={`font-serif ${titleSize(scheme.name)} text-fg break-words text-balance`}>
+                                <span className="line-mask"><span>{scheme.name}</span></span>
+                            </h1>
+                            {scheme.brief && (
+                                <p className={`mt-8 max-w-[44ch] ${TYPE.lead} text-fg break-words`}>{scheme.brief}</p>
+                            )}
+                            <div className="mt-10 flex flex-col items-start gap-x-8 gap-y-3 sm:flex-row sm:items-center">
+                                <Link href={askHref(askQuestion)} className={BUTTON}>
+                                    Ask InBridge about this scheme
+                                </Link>
+                                {scheme.source && (
+                                    <a
+                                        href={scheme.source}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`inline-flex items-center gap-1.5 min-h-12 text-lg ${TEXT_LINK}`}
+                                    >
+                                        Official page on myScheme
+                                        <ArrowUpRight size={18} aria-hidden="true" />
+                                        <span className="sr-only"> (opens in a new tab)</span>
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    </header>
+
+                    <section aria-labelledby="facts-heading" className={`${AXIS} ${BAND} mt-20 sm:mt-28 bg-surface`}>
+                        <h2 id="facts-heading" data-reveal className={`font-serif ${TYPE.head} text-fg lg:pr-16`}>
+                            At a glance
+                        </h2>
+                        <div data-reveal className="mt-6 lg:mt-0 min-w-0">
+                            <table className="w-full border-t border-line">
+                                <caption className="sr-only">What the myScheme listing says about {scheme.name}</caption>
+                                <tbody>
+                                    <Row label="Level">{scheme.level === 'Central' ? 'Central government' : 'State government'}</Row>
+                                    <Row label="Issued by">{scheme.issuer || NOT_STATED}</Row>
+                                    <Row label="States and UTs">
+                                        {scheme.allIndia
+                                            ? 'All India'
+                                            : scheme.states.length ? scheme.states.join(', ') : NOT_STATED}
+                                    </Row>
+                                    <Row label="Areas">
+                                        <ul className="flex flex-col gap-1">
+                                            {scheme.categories.map((c) => (
+                                                <li key={c}>
+                                                    <Link href={servicesHref({ category: c })} className={TEXT_LINK}>
+                                                        {categoryLabel(c)}
+                                                    </Link>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </Row>
+                                    <Row label="Scheme for">{scheme.audience ? audienceLabel(scheme.audience) : NOT_STATED}</Row>
+                                    {scheme.tags.length > 0 && <Row label="Tags">{scheme.tags.join(', ')}</Row>}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section aria-labelledby="before-heading" className={`${AXIS} ${BAND} bg-surface-2`}>
+                        <h2 id="before-heading" data-reveal className={`font-serif ${TYPE.head} text-fg lg:pr-16`}>
+                            Before you apply
+                        </h2>
+                        <div data-reveal className={`mt-6 lg:mt-1.5 max-w-[60ch] ${TYPE.body} text-fg`}>
+                            <p>
+                                Information from the {DATASET_LABEL}. Confirm it on the official page: eligibility,
+                                documents, benefits and deadlines are set by the issuing department and are not part of
+                                this listing.
+                            </p>
+                            <p className="mt-5">
+                                The listing holds only the name, issuing department, level, states, areas, who the
+                                scheme is for, a short description, tags and the myScheme link. For anything else, use
+                                the official page, or ask InBridge: its answers link to the government pages they draw on.
+                            </p>
+                        </div>
+                    </section>
+
+                    {related.length > 0 && (
+                        <section aria-labelledby="related-heading" className={`${AXIS} mt-20 sm:mt-28 pt-3`}>
+                            <div data-reveal className="lg:pr-16">
+                                <h2 id="related-heading" className={`font-serif ${TYPE.head} text-fg`}>
+                                    Related schemes
+                                </h2>
+                                <p className={`mt-5 ${TYPE.body} text-fg max-w-[36ch]`}>
+                                    More in {categoryLabel(primaryCategory)}, with the same issuer and state first.
+                                </p>
+                            </div>
+                            <div className="mt-8 lg:mt-0 min-w-0">
+                                <ul className="grid gap-y-8 sm:grid-cols-2 sm:gap-x-10">
+                                    {related.map((s, i) => (
+                                        <li key={s.slug} data-reveal style={{ '--reveal-i': i } as CSSProperties}>
+                                            <Link href={`/services/${s.slug}`} className="group block">
+                                                <span className={`block font-serif ${TYPE.lead} text-fg break-words decoration-accent decoration-2 underline-offset-[6px] transition-colors duration-200 group-hover:underline group-hover:text-accent`}>
+                                                    {s.name}
+                                                </span>
+                                                <span className="mt-1 block text-sm text-muted">{s.issuer}</span>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <Link
+                                    href={servicesHref({ category: primaryCategory, state: scheme.allIndia ? undefined : scheme.states[0] })}
+                                    className={`mt-10 inline-flex items-center min-h-11 text-lg ${TEXT_LINK}`}
+                                >
+                                    See all in this area
+                                </Link>
+                            </div>
+                        </section>
+                    )}
+
+                    <div className={`${AXIS} mt-20 sm:mt-24`}>
+                        <div className="lg:col-start-2">
+                            <PhotoCredits photos={photos} />
+                        </div>
+                    </div>
+                </div>
+            </main>
+            <SiteFooter />
+        </>
+    );
 }
