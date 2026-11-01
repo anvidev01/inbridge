@@ -1,6 +1,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { routeChatStream, ProviderUnavailableError, type RouterDeps } from '../ai/router';
+import {
+    attemptTimeoutMs,
+    DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
+    firstTokenDeadline,
+    routeChatStream,
+    ProviderUnavailableError,
+    type RouterDeps,
+} from '../ai/router';
 import type { ProviderInput, ProviderStream } from '../ai/generation';
 import { TelemetryBatch } from '../observability/telemetry';
 import type { LLMProvider } from '../observability/telemetry';
@@ -88,6 +95,36 @@ describe('routeChatStream', () => {
         assert.equal(r.provider, 'groq');
     });
 
+    test('a near deadline shortens the first-token wait below the per-provider cap', async () => {
+        const hang: ProviderStream = async function* () {
+            await new Promise(() => {});
+            yield 'never';
+        };
+        const started = Date.now();
+        await assert.rejects(
+            routeChatStream(
+                INPUT,
+                { firstTokenDeadline: Date.now() + 30 },
+                deps({ anthropic: hang }, { firstTokenTimeoutMs: 5000 })
+            ),
+            ProviderUnavailableError
+        );
+        assert.ok(Date.now() - started < 1000, 'gave up at the deadline, not after the 5s cap');
+    });
+
+    test('does not try further providers once the deadline has passed', async () => {
+        let groqCalled = false;
+        const groq: ProviderStream = async function* () {
+            groqCalled = true;
+            yield 'late';
+        };
+        await assert.rejects(
+            routeChatStream(INPUT, { firstTokenDeadline: Date.now() - 1 }, deps({ anthropic: chunks('a'), groq })),
+            ProviderUnavailableError
+        );
+        assert.equal(groqCalled, false);
+    });
+
     test('throws ProviderUnavailableError when every provider fails', async () => {
         await assert.rejects(
             routeChatStream(INPUT, {}, deps({ anthropic: failing('boom'), groq: failing('boom') })),
@@ -139,5 +176,22 @@ describe('routeChatStream', () => {
             deps({ anthropic: chunks('a'), groq: chunks('g') }, { availableProviders: async () => ['groq'] })
         );
         assert.equal(r.provider, 'groq');
+    });
+});
+
+describe('first-token budget', () => {
+    test('deadline is route start + maxDuration - generation reserve', () => {
+        assert.equal(firstTokenDeadline(1_000, 60_000, 25_000), 36_000);
+    });
+
+    test('attempt timeout is min(cap, time left), never negative', () => {
+        assert.equal(attemptTimeoutMs(10_000, undefined, 0), 10_000);
+        assert.equal(attemptTimeoutMs(10_000, 50_000, 0), 10_000);
+        assert.equal(attemptTimeoutMs(10_000, 4_000, 0), 4_000);
+        assert.equal(attemptTimeoutMs(10_000, 4_000, 9_000), 0);
+    });
+
+    test('default per-provider cap is 10s', () => {
+        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 10_000);
     });
 });

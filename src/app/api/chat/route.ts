@@ -2,7 +2,12 @@ import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { buildRetrievalQuery, latestUserText, parseChatRequest } from '@/lib/ai/chat-request';
 import { buildSources } from '@/lib/ai/citations';
 import { checkRateLimit, clientIp, type RateLimitResult } from '@/lib/ai/ratelimit';
-import { noProviderConfigured, ProviderUnavailableError, routeChatStream } from '@/lib/ai/router';
+import {
+    firstTokenDeadline,
+    noProviderConfigured,
+    ProviderUnavailableError,
+    routeChatStream,
+} from '@/lib/ai/router';
 import { FollowupSplitter, fixedFollowups, parseFollowups } from '@/lib/ai/stream-filters';
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
 import { chatError } from '@/lib/ai/user-copy';
@@ -22,6 +27,14 @@ import { DATASET_LABEL, RAGEngine, type RetrievedContext } from '@/lib/rag-engin
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+/**
+ * Time kept back from maxDuration for generating the answer after its first
+ * token (up to CHAT_MAX_TOKENS of streaming). Retrieval and every failover
+ * attempt must fit in what is left, so a slow retrieval shortens the
+ * first-token wait instead of pushing the function past maxDuration.
+ */
+const GENERATION_RESERVE_MS = 25_000;
 
 const ragEngine = new RAGEngine();
 
@@ -60,7 +73,7 @@ function errorResponse(
  *
  * Body: { messages, language, mode?, focus? } (see ChatRequestExtras in
  * src/lib/chat/protocol.ts). Streams an AI SDK v6 UI message:
- *   start (metadata.createdAt) -> data-phase (transient, real phases only)
+ *   start (metadata: createdAt, mode, language) -> data-phase (transient, real phases only)
  *   -> data-sources + data-provenance -> text -> data-followups -> finish
  *
  * Every non-200 is a ChatErrorBody. An error after streaming has started is
@@ -68,6 +81,7 @@ function errorResponse(
  * parse error.message identically in both cases.
  */
 export async function POST(req: Request) {
+    const routeStartedAt = Date.now();
     let language: Language = 'en';
     try {
         const declaredLength = Number(req.headers.get('content-length') || 0);
@@ -121,7 +135,7 @@ export async function POST(req: Request) {
 
         const stream = createUIMessageStream<InBridgeUIMessage>({
             execute: async ({ writer }) => {
-                writer.write({ type: 'start', messageMetadata: { createdAt: Date.now() } });
+                writer.write({ type: 'start', messageMetadata: { createdAt: Date.now(), mode, language } });
 
                 try {
                     // 4. Retrieval. The complaint drafter works from what the
@@ -164,7 +178,17 @@ export async function POST(req: Request) {
 
                     // 6. LLM, with failover until a provider produces its first token.
                     const system = buildSystemPrompt({ language, mode, focus, sources: promptSources });
-                    const routed = await routeChatStream({ turns, system, signal }, { telemetry });
+                    const routed = await routeChatStream(
+                        { turns, system, signal },
+                        {
+                            telemetry,
+                            firstTokenDeadline: firstTokenDeadline(
+                                routeStartedAt,
+                                maxDuration * 1000,
+                                GENERATION_RESERVE_MS
+                            ),
+                        }
+                    );
 
                     writer.write({ type: 'data-phase', data: { phase: 'writing' }, transient: true });
 
