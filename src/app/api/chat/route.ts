@@ -8,7 +8,7 @@ import {
     ProviderUnavailableError,
     routeChatStream,
 } from '@/lib/ai/router';
-import { FollowupSplitter, fixedFollowups, parseFollowups } from '@/lib/ai/stream-filters';
+import { DashRewriter, FollowupSplitter, fixedFollowups, parseFollowups, rewriteDashes } from '@/lib/ai/stream-filters';
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
 import { chatError } from '@/lib/ai/user-copy';
 import {
@@ -193,23 +193,25 @@ export async function POST(req: Request) {
                     writer.write({ type: 'data-phase', data: { phase: 'writing' }, transient: true });
 
                     // 7. Answer text. The follow-up marker and everything after
-                    // it are held back from the client.
+                    // it are held back from the client; dashes used as
+                    // punctuation are rewritten on the way out.
                     const textId = 'answer';
                     const splitter = new FollowupSplitter();
+                    const dashes = new DashRewriter();
                     writer.write({ type: 'text-start', id: textId });
                     try {
                         for await (const chunk of routed.stream) {
-                            const visible = splitter.push(chunk);
+                            const visible = dashes.push(splitter.push(chunk));
                             if (visible) writer.write({ type: 'text-delta', id: textId, delta: visible });
                         }
-                        const rest = splitter.flush();
+                        const rest = dashes.push(splitter.flush()) + dashes.flush();
                         if (rest) writer.write({ type: 'text-delta', id: textId, delta: rest });
                     } finally {
                         writer.write({ type: 'text-end', id: textId });
                     }
 
                     // 8. Follow-ups, parsed from the held-back tail.
-                    const followups = parseFollowups(splitter.tail) ?? fixedFollowups(language, mode);
+                    const followups = (parseFollowups(splitter.tail) ?? fixedFollowups(language, mode)).map((q) => rewriteDashes(q));
                     if (!splitter.markerSeen) log.info('Model omitted follow-ups; using fixed set', { provider: routed.provider });
                     writer.write({ type: 'data-followups', id: 'followups', data: followups });
 

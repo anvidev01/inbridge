@@ -54,7 +54,7 @@ export function MessageBubble({ message, isLast, isStreaming, phase, language, m
 
     if (message.role === 'user') {
         return (
-            <div className="mt-10 mb-2 w-full animate-[fadeIn_0.5s_ease-out_forwards]">
+            <div className="mt-10 mb-2 w-full animate-[page-enter_240ms_cubic-bezier(0.22,1,0.36,1)_both]">
                 {/* The question reads big (answer-engine layout) but is not a heading. */}
                 <p className="font-serif text-xl font-medium leading-snug text-fg whitespace-pre-wrap break-words wrap-anywhere sm:text-2xl">
                     {rawText}
@@ -127,7 +127,7 @@ function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, languag
     const citationHosts = useMemo(() => [...new Set(sources.map((s) => s.host).filter(Boolean))], [sources]);
 
     return (
-        <article lang={lang.htmlLang} aria-label={t.answer} className="mb-10 flex w-full flex-col animate-[fadeIn_0.5s_ease-out_forwards]">
+        <article lang={lang.htmlLang} aria-label={t.answer} className="mb-10 flex w-full flex-col animate-[page-enter_240ms_cubic-bezier(0.22,1,0.36,1)_both]">
             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted">
                 <MessageSquareText size={16} aria-hidden="true" />
                 {t.answer}
@@ -148,7 +148,7 @@ function AssistantAnswer({ message, rawText, isLast, isStreaming, phase, languag
             <SourceStrip messageId={message.id} sources={sources} strings={t} highlighted={highlighted} lang={lang.htmlLang} />
 
             {showActions && (
-                <div className="mt-4 flex flex-wrap items-center gap-1 border-t border-line pt-3">
+                <div className="mt-5 -ml-2.5 flex flex-wrap items-center gap-1">
                     <CopyButton
                         getText={() => buildCopyText(answer, sources, t.sources)}
                         label={t.copy}

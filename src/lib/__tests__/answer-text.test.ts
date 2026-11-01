@@ -48,7 +48,7 @@ describe('copy and share text', () => {
     test('copy keeps markers and appends a numbered source list', () => {
         assert.equal(
             buildCopyText('Farmers get support [1].', SOURCES),
-            'Farmers get support [1].\n\nSources:\n[1] PM-KISAN — https://pmkisan.gov.in/\n[2] myScheme — https://www.myscheme.gov.in/schemes/pm-kisan'
+            'Farmers get support [1].\n\nSources:\n[1] PM-KISAN: https://pmkisan.gov.in/\n[2] myScheme: https://www.myscheme.gov.in/schemes/pm-kisan'
         );
     });
 

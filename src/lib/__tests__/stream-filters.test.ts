@@ -1,12 +1,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    DashRewriter,
     FOLLOWUPS_MARKER,
     FollowupSplitter,
     ThinkStripper,
     fixedFollowups,
     parseFollowups,
     partialTokenSuffix,
+    rewriteDashes,
 } from '../ai/stream-filters';
 
 /** Feeds chunks through a splitter and returns what the client would see. */
@@ -117,5 +119,108 @@ describe('ThinkStripper', () => {
 
     test('drops an unclosed think block at end of stream', () => {
         assert.equal(strip(['Before <think>never closed']), 'Before ');
+    });
+});
+
+const EM = '\u2014';
+const EN = '\u2013';
+
+/** Feeds chunks through a DashRewriter and returns what the client would see. */
+function runDashes(chunks: string[]): string {
+    const rewriter = new DashRewriter();
+    return chunks.map((c) => rewriter.push(c)).join('') + rewriter.flush();
+}
+
+describe('rewriteDashes', () => {
+    test('a spaced or closed-up em dash becomes a comma', () => {
+        assert.equal(rewriteDashes(`PM-KISAN pays farmers ${EM} three times a year.`), 'PM-KISAN pays farmers, three times a year.');
+        assert.equal(rewriteDashes(`farmers${EM}three times`), 'farmers, three times');
+        assert.equal(rewriteDashes(`Apply online ${EN} it is free.`), 'Apply online, it is free.');
+    });
+
+    test('a pair of dashes around an aside becomes a pair of commas', () => {
+        assert.equal(
+            rewriteDashes(`The scheme ${EM} run by the ministry ${EM} pays monthly.`),
+            'The scheme, run by the ministry, pays monthly.'
+        );
+    });
+
+    test('a dash ending a line before a list becomes a colon', () => {
+        assert.equal(rewriteDashes(`You will need ${EM}\n- Aadhaar\n- Bank passbook`), 'You will need:\n- Aadhaar\n- Bank passbook');
+    });
+
+    test('a dash starting a line becomes a markdown bullet', () => {
+        assert.equal(rewriteDashes(`Documents:\n${EM} Aadhaar\n  ${EM} Ration card`), 'Documents:\n- Aadhaar\n  - Ration card');
+        assert.equal(rewriteDashes(`${EM} First item`), '- First item');
+    });
+
+    test('next to other punctuation the dash is dropped', () => {
+        assert.equal(rewriteDashes(`Yes, ${EM} you can.`), 'Yes, you can.');
+        assert.equal(rewriteDashes(`Check the portal ${EM}.`), 'Check the portal.');
+        assert.equal(rewriteDashes(`(${EM} optional)`), '(optional)');
+    });
+
+    test('hyphens, hyphenated words and number ranges are left intact', () => {
+        const text = 'PM-KISAN for 2024-25 pays Rs 2,000 in pages 10-20 of the e-Shram guide.';
+        assert.equal(rewriteDashes(text), text);
+        assert.equal(rewriteDashes(`For 2024${EN}25 and pages 10${EN}20.`), 'For 2024-25 and pages 10-20.');
+    });
+
+    test('a dash in a table cell stays a cell placeholder', () => {
+        assert.equal(rewriteDashes(`| Amount | ${EM} |`), '| Amount | - |');
+    });
+
+    test('Hindi text gets a comma too', () => {
+        assert.equal(rewriteDashes(`यह योजना ${EM} किसानों के लिए है।`), 'यह योजना, किसानों के लिए है।');
+    });
+
+    test('text without dashes is returned unchanged', () => {
+        const text = '## Documents needed\n\n- Aadhaar [1]\n- Land records [2]\n\n---';
+        assert.equal(rewriteDashes(text), text);
+    });
+});
+
+describe('DashRewriter', () => {
+    test('a dash split from the words around it across chunks', () => {
+        assert.equal(runDashes(['PM-KISAN pays farmers ', `${EM}`, ' three times a year.']), 'PM-KISAN pays farmers, three times a year.');
+        assert.equal(runDashes([`farmers ${EM}`, ' three times']), 'farmers, three times');
+        assert.equal(runDashes(['farmers ', `${EM} three times`]), 'farmers, three times');
+    });
+
+    test('a dash at a chunk end followed by a newline in the next chunk becomes a colon', () => {
+        assert.equal(runDashes([`You will need ${EM}`, '\n- Aadhaar']), 'You will need:\n- Aadhaar');
+    });
+
+    test('a dash at the start of a chunk that starts a line becomes a bullet', () => {
+        assert.equal(runDashes(['Documents:\n', `${EM} Aadhaar`]), 'Documents:\n- Aadhaar');
+    });
+
+    test('a range split across chunks keeps its hyphen', () => {
+        assert.equal(runDashes(['For 2024', `${EN}`, '25 only.']), 'For 2024-25 only.');
+        assert.equal(runDashes(['For 2024-', '25 only.']), 'For 2024-25 only.');
+    });
+
+    test('hyphenated words split across chunks pass through', () => {
+        assert.equal(runDashes(['PM-', 'KISAN and e-', 'Shram']), 'PM-KISAN and e-Shram');
+    });
+
+    test('spaces are only held back, never lost', () => {
+        assert.equal(runDashes(['Apply ', 'online ', '  now']), 'Apply online   now');
+        assert.equal(runDashes(['trailing space ']), 'trailing space ');
+    });
+
+    test('every chunking of a sentence gives the same result', () => {
+        const input = `The scheme ${EM} run by the ministry ${EM} pays for 2024${EN}25.\nYou need ${EM}\n${EM} Aadhaar`;
+        const expected = rewriteDashes(input);
+        assert.equal(expected, 'The scheme, run by the ministry, pays for 2024-25.\nYou need:\n- Aadhaar');
+        for (let size = 1; size <= input.length; size++) {
+            const chunks: string[] = [];
+            for (let i = 0; i < input.length; i += size) chunks.push(input.slice(i, i + size));
+            assert.equal(runDashes(chunks), expected, `chunk size ${size}`);
+        }
+    });
+
+    test('a dash at the very end of the stream is not left dangling', () => {
+        assert.equal(runDashes([`Check the portal ${EM}`]), 'Check the portal:');
     });
 });

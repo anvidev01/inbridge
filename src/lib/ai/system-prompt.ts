@@ -23,6 +23,16 @@ const LANGUAGE_RULES: Record<Language, string> = {
         'Write your entire reply in Hinglish: conversational Hindi written in Latin (Roman) script, mixed with common English words, the way it is typed on a phone. Example: "PM-KISAN ke liye aap pmkisan.gov.in par apply kar sakte hain." Do not use Devanagari script.',
 };
 
+/**
+ * Em and en dashes as punctuation read as machine-written, in every reply
+ * language. route.ts also rewrites any that slip through (DashRewriter).
+ */
+const PUNCTUATION_RULES: Record<Language, string> = {
+    en: 'Never use em dashes (\u2014) or en dashes (\u2013) as punctuation. Use a comma, a colon, brackets or a full stop instead, or write two sentences. Hyphens inside words and number ranges (PM-KISAN, 2024-25) are fine.',
+    hi: 'Never use em dashes (\u2014) or en dashes (\u2013) as punctuation in Hindi either. Use a comma (,), a colon (:), brackets or a purna viram (\u0964) instead, or write two sentences. Hyphens inside words and number ranges (PM-KISAN, 2024-25) are fine.',
+    hinglish: 'Never use em dashes (\u2014) or en dashes (\u2013) as punctuation in Hinglish either. Use a comma, a colon, brackets or a full stop instead, or write two sentences. Hyphens inside words and number ranges (PM-KISAN, 2024-25) are fine.',
+};
+
 /** Context block as numbered in the prompt. n is 1-based and matches Citation.n. */
 export interface PromptSource {
     n: number;
@@ -127,7 +137,7 @@ You help the user draft a public grievance to submit on CPGRAMS (https://pgporta
 export function buildSystemPrompt({ language, mode, focus, sources }: PromptOptions): string {
     const sections = [
         systemPrompt,
-        `LANGUAGE\n${LANGUAGE_RULES[language]}`,
+        `LANGUAGE\n${LANGUAGE_RULES[language]}\n${PUNCTUATION_RULES[language]}`,
         mode === 'grievance' ? grievanceTask(language) : defaultTask(language),
     ];
     if (focus !== 'all' && mode === 'default') {

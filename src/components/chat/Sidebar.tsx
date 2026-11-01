@@ -7,6 +7,7 @@ import {
     SquarePen, Sprout, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react';
 import { ThreadList } from './ThreadList';
+import { Logo } from '@/components/site/Logo';
 import type { Thread } from '@/lib/history';
 import type { Language } from '@/lib/chat/protocol';
 
@@ -125,7 +126,7 @@ export function inertProps(on: boolean): React.HTMLAttributes<HTMLElement> {
     return (on ? { inert: true } : {}) as unknown as React.HTMLAttributes<HTMLElement>;
 }
 
-const row = 'w-full flex items-center gap-3 min-h-11 px-3 rounded-lg text-sm text-left transition-colors';
+const row = 'w-full flex items-center gap-3 min-h-11 px-3 rounded-lg text-sm text-left transition-colors duration-150 active:bg-bg';
 
 interface SidebarProps {
     id: string;
@@ -189,15 +190,17 @@ export function Sidebar({
             >
                 <div className="px-4 pt-4 pb-3 flex items-start gap-3">
                     <div className="flex-1 min-w-0 px-1">
-                        <Link href="/" className="block w-fit text-xl font-bold font-serif tracking-tight text-fg leading-tight hover:text-accent transition-colors">InBridge</Link>
-                        <span className="block text-xs text-muted leading-snug mt-0.5">{copy.tagline}</span>
+                        <Link href="/" aria-label="InBridge" className="block w-fit py-1 text-fg rounded-md hover:opacity-80 transition-opacity">
+                            <Logo />
+                        </Link>
+                        <span className="block text-[13px] text-muted leading-snug mt-1.5">{copy.tagline}</span>
                     </div>
                     <button
                         ref={closeRef}
                         type="button"
                         onClick={onClose}
                         aria-label={copy.closeMenu}
-                        className="lg:hidden -mr-2 -mt-1 inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2"
+                        className="lg:hidden -mr-2 -mt-1 inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.94] focus-visible:rounded-full!"
                     >
                         <X className="w-5 h-5" aria-hidden="true" />
                     </button>
@@ -210,7 +213,7 @@ export function Sidebar({
                                 <button type="button" onClick={thenClose(onNewThread)} aria-keyshortcuts="Control+Shift+O Meta+Shift+O" className={`${row} text-fg font-medium hover:bg-surface-2`}>
                                     <SquarePen className="w-4 h-4 text-muted shrink-0" aria-hidden="true" />
                                     <span className="flex-1">{copy.newThread}</span>
-                                    <kbd className="hidden lg:inline text-xs text-muted font-sans" aria-hidden="true">Ctrl/⌘ ⇧ O</kbd>
+                                    <kbd className="hidden lg:inline text-[13px] text-muted font-sans" aria-hidden="true">Ctrl/⌘ ⇧ O</kbd>
                                 </button>
                             </li>
                             <li>
@@ -229,7 +232,7 @@ export function Sidebar({
                     </nav>
 
                     <section aria-labelledby="starters-heading">
-                        <h2 id="starters-heading" className="px-3 mb-1 text-xs font-semibold text-muted uppercase tracking-wider">{copy.startWith}</h2>
+                        <h2 id="starters-heading" className="px-3 mb-1 text-sm font-medium text-muted">{copy.startWith}</h2>
                         <ul className="space-y-0.5">
                             {STARTER_ICONS.map(({ key, icon: Icon }) => (
                                 <li key={key}>
@@ -242,7 +245,7 @@ export function Sidebar({
                         </ul>
                     </section>
 
-                    <div className="pt-4 border-t border-line">
+                    <div className="pt-2">
                         <ThreadList
                             language={language}
                             saveFailed={saveFailed}

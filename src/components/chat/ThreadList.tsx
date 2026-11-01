@@ -112,11 +112,11 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
     return (
         <section aria-labelledby="history-heading">
             <div className="flex items-center justify-between px-3 mb-1">
-                <h2 id="history-heading" className="text-xs font-semibold text-muted uppercase tracking-wider">{copy.heading}</h2>
+                <h2 id="history-heading" className="text-sm font-medium text-muted">{copy.heading}</h2>
                 {threads.length > 0 && (
                     confirmClear ? (
                         <span className="flex items-center gap-1">
-                            <button type="button" onClick={() => { onClearAll(); setConfirmClear(false); }} className="min-h-11 px-2 text-xs font-semibold text-danger hover:underline">
+                            <button type="button" onClick={() => { onClearAll(); setConfirmClear(false); }} className="min-h-11 px-2 text-[13px] font-semibold text-danger hover:underline">
                                 {copy.clearAllConfirm}
                             </button>
                             <button type="button" onClick={() => setConfirmClear(false)} aria-label={copy.cancelClear} className={iconButton}>
@@ -124,16 +124,16 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
                             </button>
                         </span>
                     ) : (
-                        <button type="button" onClick={() => setConfirmClear(true)} className="min-h-11 px-2 text-xs text-muted hover:text-fg">
+                        <button type="button" onClick={() => setConfirmClear(true)} className="min-h-11 px-2 text-[13px] text-muted hover:text-fg transition-colors">
                             {copy.clearAll}
                         </button>
                     )
                 )}
             </div>
-            <p className="px-3 mb-2 text-xs text-muted">{HISTORY_NOTE[language]}</p>
+            <p className="px-3 mb-2 text-[13px] leading-snug text-muted">{HISTORY_NOTE[language]}</p>
             <div role="status" aria-live="polite">
                 {saveFailed && (
-                    <p className="mx-3 mb-2 flex items-start gap-1.5 text-xs text-danger">
+                    <p className="mx-3 mb-2 flex items-start gap-1.5 text-[13px] text-danger">
                         <CircleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
                         {copy.saveFailed}
                     </p>
@@ -145,7 +145,7 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
             ) : (
                 groups.map((group) => (
                     <div key={group.key} className="mb-3">
-                        <h3 className="px-3 py-1 text-xs font-medium text-muted">{copy.groups[group.key]}</h3>
+                        <h3 className="px-3 py-1 text-[13px] text-muted">{copy.groups[group.key]}</h3>
                         <ul className="space-y-0.5">
                             {group.threads.map((t) => {
                                 const active = t.id === currentId;
@@ -184,7 +184,7 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
                                         </button>
                                         {confirmDeleteId === t.id ? (
                                             <>
-                                                <button type="button" onClick={() => { onDelete(t.id); setConfirmDeleteId(null); }} className="shrink-0 min-h-11 px-2 text-xs font-semibold text-danger hover:underline">
+                                                <button type="button" onClick={() => { onDelete(t.id); setConfirmDeleteId(null); }} className="shrink-0 min-h-11 px-2 text-[13px] font-semibold text-danger hover:underline">
                                                     {copy.deleteConfirm}
                                                 </button>
                                                 <button type="button" onClick={() => setConfirmDeleteId(null)} aria-label={copy.cancelDelete} className={iconButton}>

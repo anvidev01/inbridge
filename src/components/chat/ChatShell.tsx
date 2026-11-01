@@ -4,8 +4,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useSearchParams } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { Menu, SquarePen } from 'lucide-react';
+import { ArrowUpLeft, Menu, SquarePen } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { LogoMark } from '@/components/site/Logo';
 import { ChatWindow } from './ChatWindow';
 import { ChatInput } from './ChatInput';
 import { Sidebar, inertProps, useIsDesktop } from './Sidebar';
@@ -66,7 +67,9 @@ const COPY: Record<Language, {
     subGrievance: string;
     newThread: string;
     openMenu: string;
-    starters: { title: string; query: string }[];
+    startersHeading: string;
+    /** Suggested questions. `context` is a short plain line naming the scheme or portal. */
+    starters: { context: string; query: string }[];
     status: StatusCopy;
 }> = {
     en: {
@@ -76,41 +79,44 @@ const COPY: Record<Language, {
         subGrievance: 'Describe what went wrong. InBridge helps you write a clear complaint that you can file yourself on pgportal.gov.in.',
         newThread: 'New thread',
         openMenu: 'Open menu',
+        startersHeading: 'Try asking',
         starters: [
-            { title: 'PM-KISAN installment', query: 'How do I check the status of my PM-KISAN installment?' },
-            { title: 'Scholarship on NSP', query: 'How do I apply for a scholarship on the National Scholarship Portal?' },
-            { title: 'Aadhaar address update', query: 'How do I update the address on my Aadhaar card online?' },
-            { title: 'Ayushman card', query: 'How do I get an Ayushman card and check if my family is eligible?' },
+            { context: 'PM-KISAN, income support for farmers', query: 'How do I check the status of my PM-KISAN installment?' },
+            { context: 'National Scholarship Portal (NSP)', query: 'How do I apply for a scholarship on the National Scholarship Portal?' },
+            { context: 'Aadhaar, run by UIDAI', query: 'How do I update the address on my Aadhaar card online?' },
+            { context: 'Ayushman Bharat PM-JAY, health cover', query: 'How do I get an Ayushman card and check if my family is eligible?' },
         ],
         status: { busy: 'InBridge is preparing an answer.', ready: 'Answer ready.', stopped: 'Answer stopped.' },
     },
     hi: {
         heading: 'सरकारी योजनाओं और सेवाओं के बारे में पूछें',
-        sub: 'English, हिन्दी या Hinglish में — जहाँ उपलब्ध हों, आधिकारिक स्रोतों के लिंक के साथ।',
+        sub: 'English, हिन्दी या Hinglish में पूछें। जहाँ उपलब्ध हों, आधिकारिक स्रोतों के लिंक साथ में मिलते हैं।',
         headingGrievance: 'शिकायत लिखें',
         subGrievance: 'बताइए क्या गलत हुआ। InBridge एक साफ़ शिकायत लिखने में मदद करता है, जिसे आप खुद pgportal.gov.in पर दर्ज कर सकते हैं।',
         newThread: 'नई बातचीत',
         openMenu: 'मेन्यू खोलें',
+        startersHeading: 'ये पूछकर देखें',
         starters: [
-            { title: 'PM-KISAN किस्त', query: 'मैं अपनी PM-KISAN किस्त का स्टेटस कैसे देखूँ?' },
-            { title: 'NSP पर छात्रवृत्ति', query: 'राष्ट्रीय छात्रवृत्ति पोर्टल (NSP) पर छात्रवृत्ति के लिए आवेदन कैसे करें?' },
-            { title: 'आधार में पता बदलना', query: 'आधार कार्ड में पता ऑनलाइन कैसे बदलें?' },
-            { title: 'आयुष्मान कार्ड', query: 'आयुष्मान कार्ड कैसे बनवाएँ और कैसे जाँचें कि मेरा परिवार पात्र है या नहीं?' },
+            { context: 'PM-KISAN, किसानों के लिए आय सहायता', query: 'मैं अपनी PM-KISAN किस्त का स्टेटस कैसे देखूँ?' },
+            { context: 'राष्ट्रीय छात्रवृत्ति पोर्टल (NSP)', query: 'राष्ट्रीय छात्रवृत्ति पोर्टल (NSP) पर छात्रवृत्ति के लिए आवेदन कैसे करें?' },
+            { context: 'आधार, UIDAI द्वारा', query: 'आधार कार्ड में पता ऑनलाइन कैसे बदलें?' },
+            { context: 'आयुष्मान भारत PM-JAY, इलाज का बीमा', query: 'आयुष्मान कार्ड कैसे बनवाएँ और कैसे जाँचें कि मेरा परिवार पात्र है या नहीं?' },
         ],
         status: { busy: 'InBridge उत्तर तैयार कर रहा है।', ready: 'उत्तर तैयार है।', stopped: 'उत्तर रोक दिया गया।' },
     },
     hinglish: {
-        heading: 'Sarkari schemes aur services ke baare mein poochhein',
-        sub: 'English, हिन्दी ya Hinglish mein — jahan available ho, official sources ke links ke saath.',
+        heading: 'Sarkari schemes aur services par poochhein',
+        sub: 'English, हिन्दी ya Hinglish mein, jahan available ho official sources ke links ke saath.',
         headingGrievance: 'Complaint likhein',
         subGrievance: 'Bataiye kya galat hua. InBridge ek saaf complaint likhne mein madad karta hai, jise aap khud pgportal.gov.in par file kar sakte hain.',
         newThread: 'Naya thread',
         openMenu: 'Menu kholein',
+        startersHeading: 'Yeh poochh kar dekhein',
         starters: [
-            { title: 'PM-KISAN installment', query: 'PM-KISAN installment ka status kaise check karein?' },
-            { title: 'NSP par scholarship', query: 'National Scholarship Portal par scholarship ke liye apply kaise karein?' },
-            { title: 'Aadhaar address update', query: 'Aadhaar card mein address online kaise update karein?' },
-            { title: 'Ayushman card', query: 'Ayushman card kaise banwayein aur kaise check karein ki meri family eligible hai?' },
+            { context: 'PM-KISAN, kisaanon ke liye income support', query: 'PM-KISAN installment ka status kaise check karein?' },
+            { context: 'National Scholarship Portal (NSP)', query: 'National Scholarship Portal par scholarship ke liye apply kaise karein?' },
+            { context: 'Aadhaar, UIDAI ka', query: 'Aadhaar card mein address online kaise update karein?' },
+            { context: 'Ayushman Bharat PM-JAY, health cover', query: 'Ayushman card kaise banwayein aur kaise check karein ki meri family eligible hai?' },
         ],
         status: { busy: 'InBridge answer taiyaar kar raha hai.', ready: 'Answer taiyaar hai.', stopped: 'Answer rok diya gaya.' },
     },
@@ -374,11 +380,14 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                         aria-label={copy.openMenu}
                         aria-expanded={sidebarOpen}
                         aria-controls={SIDEBAR_ID}
-                        className="lg:hidden inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2"
+                        className="lg:hidden inline-flex items-center justify-center w-11 h-11 rounded-full text-muted hover:text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.94] focus-visible:rounded-full!"
                     >
                         <Menu className="w-6 h-6" aria-hidden="true" />
                     </button>
-                    <span className="lg:hidden max-[359px]:hidden text-xl font-bold font-serif tracking-tight">InBridge</span>
+                    <span className="lg:hidden inline-flex items-center gap-2">
+                        <LogoMark size={22} className="text-accent" />
+                        <span className="max-[359px]:sr-only font-serif text-xl font-semibold leading-none tracking-tight">InBridge</span>
+                    </span>
 
                     <div className="ml-auto flex items-center gap-1 sm:gap-2">
                         <LanguageSelect value={language} onChange={(next) => { setLanguage(next); setOutcome('none'); }} />
@@ -389,7 +398,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                             aria-label={copy.newThread}
                             title={copy.newThread}
                             aria-keyshortcuts="Control+Shift+O Meta+Shift+O"
-                            className="inline-flex items-center justify-center w-11 h-11 rounded-full border border-line text-muted hover:text-fg hover:bg-surface-2 transition-colors"
+                            className="inline-flex items-center justify-center w-11 h-11 rounded-full border border-line text-muted hover:text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.94] focus-visible:rounded-full!"
                         >
                             <SquarePen className="w-[18px] h-[18px]" aria-hidden="true" />
                         </button>
@@ -400,10 +409,10 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                 <div className={`flex-1 min-h-0 flex flex-col ${empty ? 'overflow-y-auto px-4' : ''}`}>
                     {empty ? (
                         <div className="mt-auto w-full max-w-3xl mx-auto pt-6 pb-6 text-center">
-                            <h1 className="font-serif text-3xl sm:text-4xl font-semibold tracking-tight text-fg text-balance">
+                            <h1 className="font-serif text-[1.75rem] sm:text-[2rem] leading-tight font-semibold tracking-tight text-fg text-balance">
                                 {mode === 'grievance' ? copy.headingGrievance : copy.heading}
                             </h1>
-                            <p className="mt-3 text-base text-muted text-balance">
+                            <p className="mt-3 text-base text-muted text-pretty">
                                 {mode === 'grievance' ? copy.subGrievance : copy.sub}
                             </p>
                         </div>
@@ -450,20 +459,27 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                     {empty && (
                         <div className="mb-auto w-full max-w-3xl mx-auto pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col gap-4">
                             {mode === 'default' && (
-                                <ul className="grid gap-3 sm:grid-cols-2">
-                                    {copy.starters.map((s) => (
-                                        <li key={s.title}>
-                                            <button
-                                                type="button"
-                                                onClick={() => fillComposer(s.query)}
-                                                className="w-full h-full min-h-11 text-left rounded-lg border border-line bg-surface p-4 hover:bg-surface-2 transition-colors"
-                                            >
-                                                <span className="block text-sm font-semibold text-fg">{s.title}</span>
-                                                <span className="block mt-1 text-sm text-muted">{s.query}</span>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
+                                <section aria-labelledby="starters-title">
+                                    <h2 id="starters-title" className="px-3 mb-1 text-sm font-medium text-muted">{copy.startersHeading}</h2>
+                                    <ul className="flex flex-col">
+                                        {copy.starters.map((s) => (
+                                            <li key={s.query}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fillComposer(s.query)}
+                                                    className="group w-full min-h-11 flex items-start gap-3 text-left rounded-lg px-3 py-3 hover:bg-surface active:bg-surface-2 transition-colors duration-150"
+                                                >
+                                                    <span className="flex-1 min-w-0">
+                                                        <span className="block text-base leading-snug text-fg">{s.query}</span>
+                                                        <span className="block mt-1 text-sm text-muted">{s.context}</span>
+                                                    </span>
+                                                    {/* Fills the composer above; nothing is sent until the user presses Send. */}
+                                                    <ArrowUpLeft className="w-4 h-4 mt-1 shrink-0 text-muted transition-transform duration-150 motion-safe:group-hover:-translate-x-0.5 motion-safe:group-hover:-translate-y-0.5 group-hover:text-fg" aria-hidden="true" />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
                             )}
                             <Onboarding language={language} />
                         </div>

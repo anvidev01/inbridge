@@ -67,7 +67,7 @@ function JumpToLatest({ label }: { label: string }) {
         <button
             type="button"
             onClick={() => scrollToBottom()}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 min-h-11 px-4 rounded-full border border-line bg-surface text-sm text-fg hover:bg-surface-2 transition-colors"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 min-h-11 px-4 rounded-full border border-line bg-surface text-sm text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.96] focus-visible:rounded-full! animate-[page-enter_200ms_ease-out_both]"
         >
             <ArrowDown className="w-4 h-4" aria-hidden="true" />
             {label}

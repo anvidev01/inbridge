@@ -19,7 +19,7 @@ const COPY: Record<Language, { heading: string; lines: [string, string, string];
     hi: {
         heading: 'शुरू करने से पहले',
         lines: [
-            'InBridge भारत सरकार की योजनाओं और सेवाओं से जुड़े सवालों के जवाब देता है — एक योजना डेटासेट और आधिकारिक .gov.in / .nic.in पेजों की मदद से।',
+            'InBridge भारत सरकार की योजनाओं और सेवाओं से जुड़े सवालों के जवाब देता है। इसके लिए यह एक योजना डेटासेट और आधिकारिक .gov.in / .nic.in पेजों की मदद लेता है।',
             'जवाब गलत या पुराने हो सकते हैं। कोई भी कदम उठाने से पहले दिए गए आधिकारिक पेज पर जाँच लें।',
             'यहाँ अपना आधार, OTP, PAN या बैंक विवरण कभी साझा न करें। InBridge स्वतंत्र है, कोई सरकारी सेवा नहीं।',
         ],
@@ -28,7 +28,7 @@ const COPY: Record<Language, { heading: string; lines: [string, string, string];
     hinglish: {
         heading: 'Shuru karne se pehle',
         lines: [
-            'InBridge Indian government schemes aur services ke sawaalon ke jawab deta hai — ek scheme dataset aur official .gov.in / .nic.in pages ki madad se.',
+            'InBridge Indian government schemes aur services ke sawaalon ke jawab deta hai, ek scheme dataset aur official .gov.in / .nic.in pages ki madad se.',
             'Jawab galat ya purane ho sakte hain. Koi bhi step lene se pehle linked official page par check karein.',
             'Yahan apna Aadhaar, OTP, PAN ya bank details kabhi share na karein. InBridge independent hai, government service nahi.',
         ],
@@ -67,16 +67,16 @@ export function Onboarding({ language }: { language: Language }) {
     const copy = COPY[language];
 
     return (
-        <section aria-labelledby="onboarding-heading" className="w-full rounded-lg bg-surface-2 px-4 py-3 text-left">
-            <h2 id="onboarding-heading" className="text-xs font-semibold text-fg mb-1.5">{copy.heading}</h2>
-            <ul className="space-y-1 text-xs text-muted leading-relaxed list-disc pl-4">
+        <section aria-labelledby="onboarding-heading" className="w-full rounded-xl bg-surface px-5 pt-4 pb-2 text-left">
+            <h2 id="onboarding-heading" className="font-serif text-lg font-semibold text-fg mb-2">{copy.heading}</h2>
+            <ul className="space-y-1.5 text-base text-fg leading-relaxed list-disc pl-5 marker:text-muted">
                 {copy.lines.map((line) => <li key={line}>{line}</li>)}
             </ul>
             <div className="mt-1 flex justify-end">
                 <button
                     type="button"
                     onClick={dismiss}
-                    className="min-h-11 px-4 -mr-2 rounded-full text-xs font-medium text-fg hover:bg-surface transition-colors"
+                    className="min-h-11 px-4 -mr-2 rounded-full text-sm font-medium text-fg hover:bg-surface-2 transition duration-150 motion-safe:active:scale-[0.96] focus-visible:rounded-full!"
                 >
                     {copy.ok}
                 </button>
