@@ -23,6 +23,16 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-01 — Editorial redesign, brand, Vercel size fix
+- **Vercel**: api/chat was 437-467 MB on Vercel only. onnxruntime-node's postinstall downloads CUDA libraries on any linux/x64 machine and the folder-wide include swept them in. Now only the four CPU runtime files are included, CUDA is excluded, and `.npmrc` skips the download. Local trace ≈ 93 MB; preview builds pass and the vector store answers on Vercel.
+- **Brand**: new mark (an arch whose keystone is the dot of an "i") as `src/app/icon.svg` + PNGs (16/32/180/192/512/maskable), near-black tile with the dot in green ink. Accent is green ink (indigo removed). Original `public/logo.*` kept.
+- **Design system** ("printed annual", from the design-taste skill): landing rebuilt with real footnotes as its device, a live dataset search (`/api/schemes`), category bars from real counts, open FAQ, credited Wikimedia Commons photographs (`src/lib/photos.ts`, credits in the footer of each page that shows them). Info pages and directory on one axis/type system (`src/components/site/InfoPage.tsx`). No eyebrows, hairlines, outlined boxes or gradients; 0 FAIL on the inspector for /, /services, /about, /privacy, /terms and /chat.
+- **Motion**: page transitions (`app/template.tsx`), masked headline, scroll reveals (`Reveal.tsx`, also picks up nodes added after navigation), all off under reduced motion.
+- **Chat**: Topic picker removed (retrieval infers the topic); single composer focus ring (global `:focus-visible` now in `@layer base`); starters are a quiet list; only new messages animate.
+- **Copy**: no em dashes anywhere in `src/`; the server rewrites em/en dashes in model output (`DashRewriter`: ranges become "to" or a hyphen, never a comma).
+- **Retrieval**: Devanagari questions go to live .gov.in search first (the dataset's embedding model is English-only).
+- **Open**: Hindi/Hinglish copy should be read by a native speaker; privacy/terms contact is still GitHub issues; the "portals answers have cited" list reflects live answers seen on 1 Nov 2026.
+
 ### 2026-11-01 — Investor-readiness rebuild (branch `feat/investor-ready`)
 - **Research + audit**: 6 web-research and 5 code-audit agents; plan synthesised and executed in parallel work packages, each adversarially reviewed twice.
 - **Trust**: removed MeitY/NIC/`inbridge.gov.in` metadata, "official Government of India assistant, verified by Digital India" persona, fake helpline 1800-111-555, "under 10 minutes", "Pro Member", fabricated signup DOB/gender/state. Independence disclaimer under the composer and in the footer. README claims corrected.
