@@ -50,6 +50,7 @@ export const metadata: Metadata = {
   keywords: ["government schemes", "Aadhaar", "PM-KISAN", "scholarship", "India", "myScheme", "AI assistant"],
   icons: {
     icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -87,7 +88,7 @@ export const viewport: Viewport = {
  * Default is dark (the original InBridge look); users can switch.
  * Must stay in sync with THEME_STORAGE_KEY in components/ui/ThemeToggle.tsx.
  */
-const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem('inbridge_theme');document.documentElement.dataset.theme=(t==='light'||t==='dark')?t:'dark';}catch(e){document.documentElement.dataset.theme='dark';}})();`;
+const THEME_BOOTSTRAP = `(function(){document.documentElement.classList.add('js');try{var t=localStorage.getItem('inbridge_theme');document.documentElement.dataset.theme=(t==='light'||t==='dark')?t:'dark';}catch(e){document.documentElement.dataset.theme='dark';}})();`;
 
 export default function RootLayout({
   children,

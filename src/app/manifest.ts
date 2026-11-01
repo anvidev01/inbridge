@@ -1,9 +1,9 @@
 /**
  * app/manifest.ts — served as /manifest.webmanifest
  * Colours match the dark tokens in globals.css (--bg #0a0a0a). Icon sizes are
- * the real pixel sizes of the files in public/. icon-192/icon-512 are logo.png
- * (605x592) padded to square on its own background colour (#0a0c0b) with sips,
- * then resampled. They are not maskable: the wordmark runs close to the edge.
+ * the real pixel sizes of the files in public/. All icons are rendered from
+ * the InBridge mark in src/app/icon.svg (an arch whose keystone is the dot of
+ * an "i"); icon-maskable-512 keeps the mark inside the 80% safe zone.
  */
 import type { MetadataRoute } from "next";
 
@@ -23,6 +23,7 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
   };
