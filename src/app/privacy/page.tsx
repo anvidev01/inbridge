@@ -45,9 +45,13 @@ export default function PrivacyPage() {
             <ul>
                 <li>
                     <strong>What:</strong> the text of your messages and the recent conversation, plus the language and
-                    topic you choose. If you use the microphone, your browser&apos;s speech service turns your voice into
-                    text before InBridge sees it (some browsers, such as Chrome, send the audio to their maker for
-                    this).
+                    topic you choose.
+                </li>
+                <li>
+                    <strong>Speaking instead of typing:</strong> the microphone is used only while you press the mic
+                    button in the chat box. Speech recognition is done by your browser, not by InBridge, and your
+                    audio may be processed by the browser vendor (for example, Google for Chrome) under its own
+                    policy. InBridge receives only the resulting text, exactly as if you had typed it.
                 </li>
                 <li>
                     <strong>Why:</strong> to find relevant scheme information and write an answer.
@@ -71,7 +75,10 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                     <strong>Where:</strong> only in your browser&apos;s local storage on your device. It is not uploaded
-                    to us.
+                    to us. The storage keys are <code>inbridge_threads_v1</code> (chat history),{' '}
+                    <code>inbridge_language</code>, <code>inbridge_onboarding_v1</code>, <code>inbridge_theme</code>,{' '}
+                    <code>inbridge_feedback:*</code> (which answers you rated) and <code>inbridge_checklist:*</code>{' '}
+                    (ticked checklist items).
                 </li>
                 <li>
                     <strong>Kept:</strong> until you delete it (see &ldquo;How to delete your data&rdquo; below).
@@ -85,17 +92,23 @@ export default function PrivacyPage() {
                     stays available for everyone.
                 </li>
                 <li>
-                    <strong>Kept:</strong> only for the length of the rate-limit window (about a minute). Our hosting
-                    provider also records IP addresses in its standard request logs under its own policy.
+                    <strong>Kept:</strong> used to count requests per minute for rate limiting; held in server memory
+                    only for that window, never written to a database. Our hosting provider also records IP addresses
+                    in its standard request logs under its own policy.
                 </li>
             </ul>
 
             <h3>4. Feedback on answers</h3>
             <ul>
                 <li>
-                    <strong>What:</strong> a thumbs up or down, any reasons you pick, an optional short note you write,
-                    the kind of source the answer used and the website names it cited. It does not include your
-                    question or the answer text.
+                    <strong>What:</strong> a thumbs up or down, any reason codes you pick, an optional short note you
+                    write (personal numbers such as phone or Aadhaar numbers are masked before it is logged), the kind
+                    of source the answer used, the website names it cited and a random ID for the answer. It never
+                    includes your question or the answer text.
+                </li>
+                <li>
+                    <strong>Where:</strong> written as one structured line in our server logs, which are kept by our
+                    hosting provider. Feedback is not stored in a database.
                 </li>
                 <li>
                     <strong>Why:</strong> to find and fix wrong or outdated answers.
@@ -117,13 +130,15 @@ export default function PrivacyPage() {
             <h2>Who processes your data</h2>
             <p>These companies process data for us to run the service. Some may process it outside India.</p>
             <ul>
-                <li><strong>Groq</strong> — runs the AI model that writes answers. Receives your messages and the retrieved scheme information.</li>
-                <li><strong>Anthropic, Google (Gemini)</strong> — backup AI model providers, used only when they are configured and the main provider is unavailable. Receive the same data as Groq.</li>
+                <li>
+                    <strong>AI model providers</strong> — answers are written by a large language model — currently
+                    Groq-hosted models, with Anthropic or Google Gemini used instead when configured; if one fails,
+                    the next is tried. Whichever provider answers receives your messages and the retrieved scheme
+                    information.
+                </li>
                 <li><strong>Tavily</strong> — searches .gov.in and .nic.in websites. Receives a search query based on your message.</li>
-                <li><strong>Vercel</strong> — hosts the website and the chat server. Handles all requests, including IP addresses.</li>
-                <li><strong>Upstash</strong> — if configured, keeps rate-limit counters keyed by IP address.</li>
-                <li><strong>Supabase</strong> — if configured, stores feedback records (and account records if sign-in is turned on).</li>
-                <li><strong>Render</strong> — hosts the account service, used only if sign-in is turned on.</li>
+                <li><strong>Vercel</strong> — hosts the website and the chat server. Handles all requests, including IP addresses, and keeps the server logs that hold feedback lines.</li>
+                <li><strong>Render and Supabase</strong> — only if sign-in is enabled (it is currently off): Render hosts the account service and Supabase stores account records.</li>
             </ul>
             <p>Each provider keeps data under its own terms and privacy policy.</p>
 
@@ -135,8 +150,9 @@ export default function PrivacyPage() {
                     device; there is no copy on our servers.
                 </li>
                 <li>
-                    <strong>Feedback:</strong> feedback is not linked to your name or email. If you wrote a note you
-                    want removed, contact us below.
+                    <strong>Feedback:</strong> feedback is not linked to your name or email. Choosing a thumbs up or
+                    down also saves that choice on your device under <code>inbridge_feedback:*</code>, which clearing
+                    site data removes. If you wrote a note you want removed from the server logs, contact us below.
                 </li>
             </ul>
 

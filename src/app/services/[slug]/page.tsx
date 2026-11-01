@@ -18,8 +18,8 @@ import {
     askHref,
     audienceLabel,
     categoryLabel,
+    getRelatedSchemes,
     getScheme,
-    getSchemes,
     servicesHref,
 } from '@/lib/schemes';
 
@@ -74,12 +74,8 @@ export default async function SchemeDetailPage({ params }: PageProps) {
 
     const askQuestion = `Tell me about ${scheme.name}: who it is for, what it offers and how to apply.`;
     const primaryCategory = scheme.categories[0];
-    const related = primaryCategory
-        ? getSchemes({
-            category: primaryCategory,
-            state: scheme.allIndia ? undefined : scheme.states[0],
-        }).items.filter((s) => s.slug !== scheme.slug).slice(0, 3)
-        : [];
+    // Same issuer / state first, then by name (see rankRelated in lib/schemes.ts).
+    const related = getRelatedSchemes(scheme, 3);
 
     return (
         <>

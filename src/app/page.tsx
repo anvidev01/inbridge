@@ -5,8 +5,11 @@
  * computed from the myScheme dataset at build time; there are no user counts,
  * testimonials, logos or accuracy claims.
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, DoorOpen, EyeOff, Link2, Scale, X } from 'lucide-react';
 import { SiteHeader } from '@/components/site/SiteHeader';
@@ -15,6 +18,7 @@ import { HeroComposer } from '@/components/site/HeroComposer';
 import { SchemeCard } from '@/components/scheme/SchemeCard';
 import { DATASET_LABEL, askHref, getFilterOptions, getScheme, getStats, servicesHref } from '@/lib/schemes';
 import { LANGUAGES } from '@/lib/chat/protocol';
+import { pngSize } from '@/lib/site';
 
 export const metadata: Metadata = {
     title: { absolute: 'InBridge — ask about any Indian government scheme, with answers linked to official sources' },
@@ -77,6 +81,21 @@ const DOES_NOT = [
     'Ask for your Aadhaar, PAN, OTP or bank details',
 ];
 
+/**
+ * A real screenshot of an InBridge answer, if one has been added at
+ * public/landing/answer-dark.png. No mockups: when the file is missing the
+ * "See it answer" section is not rendered at all.
+ */
+const ANSWER_SCREENSHOT = '/landing/answer-dark.png';
+
+function readAnswerScreenshot(): { width: number; height: number } | null {
+    try {
+        return pngSize(readFileSync(path.join(process.cwd(), 'public', ANSWER_SCREENSHOT)));
+    } catch {
+        return null;
+    }
+}
+
 function SectionHeading({ id, eyebrow, children }: { id: string; eyebrow: string; children: ReactNode }) {
     return (
         <div className="max-w-2xl">
@@ -93,6 +112,7 @@ export default function HomePage() {
     const categories = [...getFilterOptions().categories].sort((a, b) => b.count - a.count);
     const samples = SAMPLE_SLUGS.map(getScheme).filter((s) => s !== undefined);
     const n = (v: number) => v.toLocaleString('en-IN');
+    const screenshot = readAnswerScreenshot();
 
     const coverage = [
         { value: n(stats.total), label: 'schemes in the dataset' },
@@ -166,6 +186,25 @@ export default function HomePage() {
                         </ol>
                     </div>
                 </section>
+
+                {/* ── See it answer (only with a real screenshot) ──── */}
+                {screenshot && (
+                    <section aria-labelledby="answer-heading" className="border-t border-line">
+                        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-20 sm:py-28">
+                            <SectionHeading id="answer-heading" eyebrow="See it answer">
+                                A real answer, with its sources.
+                            </SectionHeading>
+                            <Image
+                                src={ANSWER_SCREENSHOT}
+                                width={screenshot.width}
+                                height={screenshot.height}
+                                sizes="(min-width: 72rem) 72rem, 100vw"
+                                alt="Screenshot of a real InBridge answer in the dark theme, with numbered links to the official sources it cited."
+                                className="mt-12 h-auto w-full rounded-lg border border-line"
+                            />
+                        </div>
+                    </section>
+                )}
 
                 {/* ── Coverage (computed from the dataset) ─────────── */}
                 <section aria-labelledby="coverage-heading" className="border-t border-line bg-surface">

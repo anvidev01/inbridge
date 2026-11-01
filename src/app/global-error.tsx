@@ -53,7 +53,7 @@ export default function GlobalError({
             </button>
             <a
               href="/chat"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-line bg-surface px-6 text-base font-medium text-fg transition-colors hover:bg-surface-2"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-muted bg-surface px-6 text-base font-medium text-fg transition-colors hover:bg-surface-2"
             >
               Ask InBridge
             </a>

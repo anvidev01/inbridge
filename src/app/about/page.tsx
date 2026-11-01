@@ -64,9 +64,9 @@ export default function AboutPage() {
             </p>
             <h3>3. An AI model writes the answer</h3>
             <p>
-                The answer is written by a large language model, using only the information retrieved in steps 1
-                and 2. The main provider is <strong>Groq</strong>. Anthropic and Google Gemini models can act as
-                backups when they are configured. The model is told to cite only the sources it was given and to say
+                Answers are written by a large language model — currently Groq-hosted models, with Anthropic or
+                Google Gemini used instead when configured; if one fails, the next is tried. The model works only
+                from the information retrieved in steps 1 and 2, and is told to cite only the sources it was given and to say
                 so when it does not know.
             </p>
 

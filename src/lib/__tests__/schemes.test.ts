@@ -16,7 +16,14 @@ import {
     getScheme,
     getStats,
     getFilterOptions,
+    getRelatedSchemes,
+    fold,
+    queryTerms,
+    nameSortKey,
+    rankRelated,
+    type Scheme,
 } from '../schemes';
+import { pngSize } from '../site';
 
 const FIXTURE = [
     {
@@ -136,6 +143,115 @@ describe('searchIndex', () => {
         assert.equal(p.items.length, 1);
         assert.equal(searchIndex(index, {}, -5, 3).page, 1);
         assert.equal(searchIndex(index, { q: 'zzzz' }).totalPages, 1);
+    });
+});
+
+describe('Devanagari and unusable queries', () => {
+    const index = buildIndex([
+        ...FIXTURE,
+        {
+            slug: 'hi-kisan', name: 'किसान सम्मान योजना', short: 'HIKS', issuer: 'Government of Bihar',
+            level: 'State', states: ['Bihar'], categories: ['Agriculture,Rural & Environment'], for: 'Individual',
+            brief: 'किसानों के लिए सहायता', tags: ['किसान'], source: null,
+        },
+        {
+            slug: 'hi-scholar', name: 'छात्रवृत्ति योजना', short: 'HISC', issuer: 'Government of Bihar',
+            level: 'State', states: ['Bihar'], categories: ['Education & Learning'], for: 'Individual',
+            brief: 'छात्रों के लिए छात्रवृत्ति', tags: ['छात्रवृत्ति'], source: null,
+        },
+    ]);
+
+    test('fold keeps Devanagari vowel signs, virama and anusvara', () => {
+        assert.equal(fold('किसान'), 'किसान');
+        assert.equal(fold('छात्रवृत्ति योजना'), 'छात्रवृत्ति योजना');
+        assert.equal(fold('Café, “Ārogya”!'), 'cafe arogya');
+    });
+
+    test('a Devanagari query matches only schemes containing the word', () => {
+        assert.deepEqual(searchIndex(index, { q: 'किसान' }).items.map((s) => s.slug), ['hi-kisan']);
+        assert.deepEqual(searchIndex(index, { q: 'छात्रवृत्ति' }).items.map((s) => s.slug), ['hi-scholar']);
+        assert.equal(searchIndex(index, { q: 'किसान' }).queryTooGeneral, false);
+    });
+
+    test('single-letter and stopword-only queries return nothing and are flagged, not the whole dataset', () => {
+        for (const q of ['a', 'the', 'schemes for me', 'योजना']) {
+            const page = searchIndex(index, { q });
+            assert.equal(page.total, 0, q);
+            assert.equal(page.queryTooGeneral, true, q);
+            assert.deepEqual(queryTerms(q), [], q);
+        }
+    });
+
+    test('no query (or whitespace) still lists everything and is not flagged', () => {
+        assert.equal(searchIndex(index, {}).total, 6);
+        assert.equal(searchIndex(index, { q: '   ' }).total, 6);
+        assert.equal(searchIndex(index, {}).queryTooGeneral, false);
+    });
+
+    test('real dataset: Hindi and stopword queries do not return everything', () => {
+        const all = getStats().total;
+        for (const q of ['किसान', 'छात्रवृत्ति', 'a', 'the']) {
+            assert.ok(getSchemes({ q }).total < all, q);
+        }
+        assert.equal(getSchemes({ q: 'the' }).queryTooGeneral, true);
+        assert.equal(getSchemes({ q: 'a' }).total, 0);
+    });
+});
+
+describe('related schemes ("More in <area>")', () => {
+    const base = {
+        short: '', level: 'State' as const, allIndia: false, audience: null, brief: '', source: null,
+        categories: ['Education & Learning'],
+    };
+    const mk = (slug: string, name: string, issuer: string, states: string[], tags: string[] = []): Scheme =>
+        ({ ...base, slug, name, issuer, states, tags });
+
+    const target = mk('t', 'Target Scholarship', 'Government of Bihar', ['Bihar'], ['Scholarship']);
+    const candidates = [
+        mk('quoted', '"Zebra" Scheme', 'Government of Kerala', ['Kerala']),
+        mk('alpha', 'Alpha Grant', 'Government of Goa', ['Goa']),
+        mk('bihar-other', 'Zeta Bihar Grant', 'Department of Welfare, Bihar', ['Bihar']),
+        mk('bihar-issuer', 'Yellow Bihar Scheme', 'Government of Bihar', ['Bihar']),
+        mk('bihar-tag', 'Xylo Bihar Scholarship', 'Department of Welfare, Bihar', ['Bihar'], ['Scholarship']),
+        { ...mk('other-area', 'Aaa Health', 'Government of Bihar', ['Bihar']), categories: ['Health & Wellness'] },
+        target,
+    ];
+
+    test('same issuer, then same state, then shared tags, then name', () => {
+        assert.deepEqual(
+            rankRelated(target, candidates, 10).map((s) => s.slug),
+            ['bihar-issuer', 'bihar-tag', 'bihar-other', 'alpha', 'quoted']
+        );
+    });
+
+    test('names sort ignoring leading quotes and punctuation', () => {
+        assert.equal(nameSortKey('"Aarambh" Scheme'), 'Aarambh" Scheme');
+        assert.equal(nameSortKey('“Mukhyamantri” Yojana'), 'Mukhyamantri” Yojana');
+        const ordered = rankRelated(mk('x', 'X', '', []), candidates.filter((c) => c.states[0] !== 'Bihar'), 10);
+        assert.deepEqual(ordered.map((s) => s.slug), ['alpha', 'quoted']);
+    });
+
+    test('real dataset: related list excludes the scheme and stays in its area', () => {
+        const scheme = getScheme('pm-kisan')!;
+        const related = getRelatedSchemes(scheme);
+        assert.ok(related.length > 0 && related.length <= 3);
+        for (const r of related) {
+            assert.notEqual(r.slug, scheme.slug);
+            assert.ok(r.categories.includes(scheme.categories[0]));
+        }
+    });
+});
+
+describe('pngSize', () => {
+    test('reads width and height from the IHDR chunk of a real PNG', () => {
+        const bytes = readFileSync(path.join(process.cwd(), 'public/icon-192.png'));
+        assert.deepEqual(pngSize(bytes), { width: 192, height: 192 });
+        assert.deepEqual(pngSize(readFileSync(path.join(process.cwd(), 'public/logo.png'))), { width: 605, height: 592 });
+    });
+
+    test('returns null for non-PNG bytes', () => {
+        assert.equal(pngSize(new Uint8Array([1, 2, 3])), null);
+        assert.equal(pngSize(readFileSync(path.join(process.cwd(), 'public/logo.jpg'))), null);
     });
 });
 
