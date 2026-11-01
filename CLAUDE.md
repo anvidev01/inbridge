@@ -18,6 +18,10 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - The product is intentionally chat-only: `/`, `/services`, `/grievance`, `/status`, `/apply/*` all redirect to `/chat` (only `/services/<slug>` detail pages and `/chat` render). Note `curl -L` hides this — use `curl -I` when checking status codes.
 
 ## Change Log
+### 2026-11-01 — Fix Vercel build (npm 404)
+- **Fix**: `npm install` failed on Vercel with `404 Not Found` for `@tigrisdata/vector@1.1.0`. Both `@tigrisdata/core` and `@tigrisdata/vector` have been removed from the npm registry (every version 404s). Neither is imported anywhere in the code, so both were dropped from `package.json` / `package-lock.json`. Verified with a clean `npm ci` + `npm run build`.
+- **Open (not fixed yet)**: live `/api/chat` returns empty sources for every query — the FAISS vector store fails to load on Vercel (see commit 788fc46) and the Tavily fallback also returns nothing. Check runtime logs for `Failed to load vector store` / `Tavily search error` after this deploy.
+
 ### 2026-11-01 — Pre-showcase audit
 - **Fix**: Grievance form submitted to `http://go-api:8080` (docker-compose hostname, unreachable on Vercel) via a server action with no auth. Replaced with a client-side helper `src/lib/submit-application.ts` that calls `NEXT_PUBLIC_API_URL` with the user's JWT; shows "Please log in" when unauthenticated and handles 401. Removed `src/app/actions.ts`.
 - **Correction**: `GrievanceForm` is currently unreachable (its page redirects to `/chat`), so the fix above is latent and not visible in the live site; it only matters if the grievance page is re-enabled.
