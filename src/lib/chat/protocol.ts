@@ -148,3 +148,30 @@ export function dataPart<K extends keyof InBridgeDataParts>(
         | undefined;
     return part?.data;
 }
+
+// ── Feedback (/api/feedback) ──────────────────────────────────────────────
+
+/** Reason chips shown after a vote. Codes are stable; labels are the UI's job. */
+export const FEEDBACK_REASONS = ['wrong_info', 'outdated', 'wrong_scheme', 'broken_link', 'wrong_language'] as const;
+export type FeedbackReason = (typeof FEEDBACK_REASONS)[number];
+
+/** Max length of the optional free-text note. */
+export const FEEDBACK_NOTE_MAX = 300;
+
+/**
+ * Body the client POSTs to /api/feedback; the server answers 204 (or a
+ * ChatErrorBody). It never carries the question or answer text: the server
+ * logs only these fields.
+ */
+export interface FeedbackBody {
+    /** UIMessage id of the rated assistant message. */
+    messageId: string;
+    rating: 'up' | 'down';
+    reasons?: FeedbackReason[];
+    /** Optional, <= FEEDBACK_NOTE_MAX chars. PII in it is masked server-side. */
+    note?: string;
+    /** From the message's data-provenance part. */
+    sourceType?: RetrievalSource;
+    /** Citation hosts from the message's data-sources part, e.g. ["pmkisan.gov.in"]. */
+    citationHosts?: string[];
+}

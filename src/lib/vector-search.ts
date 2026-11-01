@@ -52,14 +52,25 @@ export function parseFlatIndex(buf: Buffer): FlatIndex {
     return { dim, count, vectors: new Float32Array(bytes.buffer) };
 }
 
-/** Returns the k nearest vectors as [index, squaredL2] pairs, closest first. */
-export function searchFlatL2(index: FlatIndex, query: ArrayLike<number>, k: number): Array<[number, number]> {
+/**
+ * Returns the k nearest vectors as [index, squaredL2] pairs, closest first.
+ * `include`, when given, restricts the search to the vectors it accepts, so a
+ * filtered search returns the true top k of the filtered set (not the top k
+ * overall, filtered afterwards).
+ */
+export function searchFlatL2(
+    index: FlatIndex,
+    query: ArrayLike<number>,
+    k: number,
+    include?: (i: number) => boolean
+): Array<[number, number]> {
     const { dim, count, vectors } = index;
     if (query.length !== dim) {
         throw new Error(`Query has ${query.length} dims, index has ${dim}`);
     }
     const top: Array<[number, number]> = [];
     for (let i = 0; i < count; i++) {
+        if (include && !include(i)) continue;
         let dist = 0;
         const base = i * dim;
         for (let j = 0; j < dim; j++) {
@@ -107,12 +118,20 @@ export class LocalVectorStore {
         return new LocalVectorStore(index, docs, await loadExtractor());
     }
 
-    /** Same shape as FaissStore.similaritySearchWithScore: [doc, squaredL2][]. */
-    async similaritySearchWithScore(query: string, k: number): Promise<Array<[StoredDoc, number]>> {
+    /**
+     * Same shape as FaissStore.similaritySearchWithScore: [doc, squaredL2][].
+     * `filter` limits the search to matching documents (e.g. one category).
+     */
+    async similaritySearchWithScore(
+        query: string,
+        k: number,
+        filter?: (doc: StoredDoc) => boolean
+    ): Promise<Array<[StoredDoc, number]>> {
         // Mean pooling + normalization matches how the index was built
         // (LangChain HuggingFaceTransformersEmbeddings defaults).
         const output = await this.extractor(query, { pooling: "mean", normalize: true });
-        return searchFlatL2(this.index, output.data, k).map(([i, score]) => [this.docs[i], score]);
+        const include = filter ? (i: number) => filter(this.docs[i]) : undefined;
+        return searchFlatL2(this.index, output.data, k, include).map(([i, score]) => [this.docs[i], score]);
     }
 }
 

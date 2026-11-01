@@ -1,34 +1,21 @@
-
-import { ChatOllama } from "@langchain/ollama";
-import { ChatGroq } from "@langchain/groq";
 import { tavily } from "@tavily/core";
 import path from "path";
+import type { Focus } from "./chat/protocol";
+import type { RetrievedDoc } from "./ai/citations";
+import { GOV_DOMAINS, isGovUrl } from "./ai/gov-url";
 import { LRUCache, queryCacheKey } from "./cache/lru";
 import { log } from "./observability/logger";
 import type { RAGSource, TelemetryBatch } from "./observability/telemetry";
+import type { LocalVectorStore, StoredDoc } from "./vector-search";
 
-// Define interfaces for our RAG response
-export interface RAGResponse {
-    answer: string;
-    // Widened to RAGSource: a cached retrieval reports source "cache".
-    source: RAGSource;
-    citations: Array<{
-        title: string;
-        url?: string;
-        content: string;
-    }>;
-}
+// Re-exported: existing callers and tests import isGovUrl from here.
+export { isGovUrl };
 
-export type Language = 'en' | 'hi' | 'bn' | 'mr' | 'te' | 'hinglish';
-
-const PROMPTS: Record<Language, string> = {
-    en: "You are an official government assistant. Respond strictly in English. Maintain a formal, helpful tone.",
-    hi: "आप एक आधिकारिक सरकारी सहायक हैं। कृपया उत्तर केवल हिंदी (देवनागरी लिपि) में दें। औपचारिक और सहायक लहज़ा बनाए रखें।",
-    bn: "আপনি একজন সরকারি সহায়ক। দয়া করে উত্তর শুধুমাত্র বাংলায় দিন। আনুষ্ঠানিক এবং সহায়ক সুর বজায় রাখুন।",
-    mr: "तुम्ही एक अधिकृत सरकारी सहाय्यक आहात. कृपया उत्तर फक्त मराठीत द्या. औपचारिक आणि मदतीचा सूर ठेवा.",
-    te: "మీరు ప్రభుత్వ సహాయకులు. దయచేసి సమాధానం తెలుగులో మాత్రమే ఇవ్వండి. అధికారిక మరియు సహాయక ధోరణిని కొనసాగించండి.",
-    hinglish: "You are an official government assistant. Respond in Hinglish. Use Devanagari script for conversational Hindi text, but keep technical terms (like 'Aadhaar', 'Scheme', 'Apply') strictly in English (Latin script). Example: 'Aadhaar Card ke liye apply karein'."
-};
+/**
+ * Label for answers grounded in the bundled dataset. The vector store was
+ * built from the myScheme catalogue committed in Aug 2026 (see CLAUDE.md).
+ */
+export const DATASET_LABEL = "myScheme snapshot (Aug 2026)";
 
 /**
  * Converts a FAISS IndexFlatL2 score into a cosine similarity in [-1, 1].
@@ -55,17 +42,6 @@ interface TavilyResult {
     content: string;
 }
 
-/** True when a URL is hosted on an official Indian government domain. */
-export function isGovUrl(url: string | undefined): boolean {
-    if (!url) return false;
-    try {
-        const host = new URL(url).hostname.toLowerCase();
-        return GOV_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
-    } catch {
-        return false;
-    }
-}
-
 /**
  * Queries asking for current information ("latest", "new", a year, ...).
  * These go to live web search first: the vector store is a static snapshot
@@ -77,16 +53,48 @@ export function isRecencyQuery(query: string): boolean {
     return RECENCY_PATTERN.test(query);
 }
 
-// Bare domain suffixes: Tavily's include_domains takes domains, not ".gov.in".
-// The previous [".gov.in", ".nic.in"] made every Tavily search return zero
-// results in production (logs: Tavily called, citations: 0, no error).
-const GOV_DOMAINS = ["gov.in", "nic.in"];
+/**
+ * The scheme's category line from a docstore entry.
+ *
+ * Category is not in the docstore metadata; the dataset builder wrote it into
+ * pageContent as "CATEGORY: Education & Learning, Women and Child". Category
+ * names themselves contain commas ("Agriculture,Rural & Environment"), so the
+ * line is matched by substring rather than split.
+ */
+export function categoryLine(pageContent: string): string | null {
+    const match = /^CATEGORY:\s*(.+)$/m.exec(pageContent);
+    return match ? match[1].trim() : null;
+}
+
+/** True when a docstore entry belongs to the focus category ('all' matches everything). */
+export function matchesFocus(pageContent: string, focus: Focus): boolean {
+    if (focus === "all") return true;
+    const line = categoryLine(pageContent);
+    return line !== null && line.includes(focus);
+}
 
 /** What retrieveContext returns, and what the cache stores. */
 export interface RetrievedContext {
-    context: string;
+    docs: RetrievedDoc[];
     source: RAGSource;
-    citations: any[];
+    /** When this context was fetched. A cache hit keeps the original time. */
+    retrievedAt: string;
+}
+
+export type RetrievalPhase = "searching-dataset" | "searching-gov";
+
+export interface RetrieveOptions {
+    telemetry?: TelemetryBatch;
+    /** Restrict vector-store results to one myScheme category. */
+    focus?: Focus;
+    /**
+     * Text checked by isRecencyQuery. Defaults to the query; the route passes
+     * only the latest message so a year mentioned three turns ago does not
+     * keep sending every follow-up to live search.
+     */
+    recencyText?: string;
+    /** Called just before each search actually starts. Not called on a cache hit. */
+    onPhase?: (phase: RetrievalPhase) => void;
 }
 
 /**
@@ -112,15 +120,27 @@ export function clearRagCache() {
     retrievalCache.clear();
 }
 
+/** After a failed vector-store load, wait this long before trying again. */
+const VECTOR_STORE_RETRY_MS = 60 * 1000;
+
+/** Documents passed to the model from the vector store. */
+const VECTOR_TOP_K = 3;
+
+/** Characters of each live-search result passed to the model. */
+const MAX_LIVE_CONTENT_CHARS = 1500;
+
+/**
+ * Retrieval only: vector store, then live search of government portals. The
+ * LLM call lives in src/lib/ai/router.ts. (The old query() method and its
+ * Ollama/LangChain-Groq client were unused and have been removed.)
+ */
 export class RAGEngine {
     private vectorStorePath: string;
-    private llm: ChatOllama | ChatGroq;
-    private tavilyClient: any; // Using any for now as @tavily/core types might vary
-    private isInitialized: boolean = false;
-    private vectorStore: import("./vector-search").LocalVectorStore | null = null;
+    private tavilyClient: ReturnType<typeof tavily> | null = null;
+    private vectorStore: LocalVectorStore | null = null;
+    private vectorStoreLoading: Promise<LocalVectorStore | null> | null = null;
+    private lastLoadFailureAt = 0;
 
-    // Configuration
-    //
     // Minimum cosine similarity for a retrieved document to be used as context.
     //
     // Calibrated against the live corpus (4,740 scheme docs from the myScheme
@@ -133,61 +153,57 @@ export class RAGEngine {
     // distribution: it recovers vague real queries while staying a clear 0.11
     // above the adversarial ceiling. Override with RAG_SIMILARITY_THRESHOLD.
     private SIMILARITY_THRESHOLD = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || "0.35");
-    private LLM_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b"; // llama-3.3-70b-versatile was retired from Groq
-    private OLLAMA_MODEL = "llama3.2:3b";
 
     constructor() {
         this.vectorStorePath = path.join(process.cwd(), "vector_store");
 
-        // Initialize LLM (Groq Preferred for Vercel, Ollama fallback)
-        const groqApiKey = process.env.GROQ_API_KEY;
-        if (groqApiKey) {
-            console.log("Using Groq Cloud LLM");
-            this.llm = new ChatGroq({
-                apiKey: groqApiKey,
-                model: this.LLM_MODEL,
-                temperature: 0.1
-            });
-        } else {
-            console.log("Using Local Ollama (Fallback)");
-            this.llm = new ChatOllama({
-                baseUrl: "http://localhost:11434", // Default Ollama URL
-                model: this.OLLAMA_MODEL,
-                temperature: 0.1, // Lower temperature for more deterministic translations
-            });
-        }
-
-        // Initialize Tavily
         const apiKey = process.env.TAVILY_API_KEY;
         if (apiKey) {
             this.tavilyClient = tavily({ apiKey });
         } else {
-            console.warn("TAVILY_API_KEY is not set. Fallback search will not work.");
+            log.warn("TAVILY_API_KEY is not set; live government search is disabled");
         }
     }
 
-    // Lazy initialization of the vector store
-    private async initializeVectorStore() {
-        if (this.isInitialized) return;
+    /** False while a failed load is backing off, so callers can skip the phase. */
+    private vectorStoreAvailable(): boolean {
+        return this.vectorStore !== null || Date.now() - this.lastLoadFailureAt >= VECTOR_STORE_RETRY_MS;
+    }
 
-        try {
-            console.log(`Loading vector store from: ${this.vectorStorePath}`);
+    /**
+     * Lazily loads the vector store. A failure is retried after
+     * VECTOR_STORE_RETRY_MS rather than latched for the life of the instance
+     * (which used to leave a warm instance on live search only until recycled).
+     * Concurrent callers share one load.
+     */
+    private async getVectorStore(): Promise<LocalVectorStore | null> {
+        if (this.vectorStore) return this.vectorStore;
+        if (!this.vectorStoreAvailable()) return null;
+        if (this.vectorStoreLoading) return this.vectorStoreLoading;
+
+        this.vectorStoreLoading = (async () => {
             const started = Date.now();
-
-            // Pure-JS search over the same FAISS index file. faiss-node's native
-            // binary is not bundled by Vercel, so FaissStore.load always failed
-            // there. Dynamic import keeps the embedding runtime off the cold path
-            // until the first query needs it.
-            const { LocalVectorStore } = await import("./vector-search");
-            this.vectorStore = await LocalVectorStore.load(this.vectorStorePath);
-            log.info("Vector store loaded", { duration_ms: Date.now() - started });
-            this.isInitialized = true;
-        } catch (error) {
-            console.error("⚠️ Failed to load vector store (Running in Fallback Mode):", error);
-            // We might proceed without vector store if it fails, relying on Tavily/LLM
-            this.vectorStore = null;
-            this.isInitialized = true; // Mark as initialized so we don't retry forever
-        }
+            try {
+                // Pure-JS search over the same FAISS index file. faiss-node's
+                // native binary is not bundled by Vercel, so FaissStore.load
+                // always failed there. Dynamic import keeps the embedding runtime
+                // off the cold path until the first query needs it.
+                const { LocalVectorStore } = await import("./vector-search");
+                this.vectorStore = await LocalVectorStore.load(this.vectorStorePath);
+                log.info("Vector store loaded", { duration_ms: Date.now() - started });
+                return this.vectorStore;
+            } catch (error) {
+                this.lastLoadFailureAt = Date.now();
+                log.error("Failed to load vector store; retrying after backoff", {
+                    error,
+                    retry_ms: VECTOR_STORE_RETRY_MS,
+                });
+                return null;
+            } finally {
+                this.vectorStoreLoading = null;
+            }
+        })();
+        return this.vectorStoreLoading;
     }
 
     /**
@@ -196,12 +212,10 @@ export class RAGEngine {
      * Emits exactly one rag_cache event per call so that
      * inbridge_rag_cache_hits_total / (hits + misses) is a true hit rate.
      */
-    public async retrieveContext(
-        userMessage: string,
-        telemetry?: TelemetryBatch
-    ): Promise<RetrievedContext> {
+    public async retrieveContext(query: string, options: RetrieveOptions = {}): Promise<RetrievedContext> {
+        const { telemetry, focus = "all" } = options;
         const started = Date.now();
-        const key = queryCacheKey(userMessage);
+        const key = `${focus}|${queryCacheKey(query)}`;
 
         const cached = retrievalCache.get(key);
         if (cached) {
@@ -210,27 +224,27 @@ export class RAGEngine {
             log.info("RAG cache hit", {
                 duration_ms: elapsed,
                 cached_source: cached.source,
-                citations: cached.citations.length,
+                citations: cached.docs.length,
             });
             return cached;
         }
 
-        const result = await this.retrieveUncached(userMessage);
+        const result = await this.retrieveUncached(query, { ...options, focus });
         const elapsed = Date.now() - started;
 
         telemetry?.ragCache("miss", result.source, elapsed);
         log.info("RAG retrieval completed", {
             duration_ms: elapsed,
             source: result.source,
-            citations: result.citations.length,
-            context_chars: result.context.length,
+            citations: result.docs.length,
+            focus,
         });
 
-        // Only cache a real retrieval. An empty context means the vector store
+        // Only cache a real retrieval. An empty result means the vector store
         // missed *and* Tavily failed or was unconfigured; caching that would pin
         // a transient outage in front of every repeat of the query for the whole
         // TTL, long after the dependency recovered.
-        if (result.context) {
+        if (result.docs.length > 0) {
             retrievalCache.set(key, result);
         }
 
@@ -245,17 +259,18 @@ export class RAGEngine {
      * If the domain-restricted search comes back empty, retry unrestricted and
      * keep only the government hits.
      */
-    private async searchGovPortals(userMessage: string): Promise<{ context: string; citations: RAGResponse["citations"] } | null> {
+    private async searchGovPortals(query: string, onPhase?: RetrieveOptions["onPhase"]): Promise<RetrievedDoc[] | null> {
         if (!this.tavilyClient) return null;
+        onPhase?.("searching-gov");
 
         const attempts = [
             { includeDomains: GOV_DOMAINS, maxResults: 5 },
-            { query: `${userMessage} site:gov.in OR site:nic.in`, maxResults: 10 },
+            { query: `${query} site:gov.in OR site:nic.in`, maxResults: 10 },
         ];
 
-        for (const { query, ...options } of attempts) {
+        for (const { query: attemptQuery, ...options } of attempts) {
             try {
-                const searchResult = await this.tavilyClient.search(query ?? userMessage, {
+                const searchResult = await this.tavilyClient.search(attemptQuery ?? query, {
                     searchDepth: "advanced",
                     ...options,
                 });
@@ -264,135 +279,81 @@ export class RAGEngine {
                     .slice(0, 5);
 
                 log.info("Tavily search completed", {
-                    restricted: Boolean(options.includeDomains),
+                    restricted: "includeDomains" in options,
                     raw_results: searchResult.results?.length ?? 0,
                     gov_results: results.length,
                 });
 
                 if (results.length > 0) {
-                    return {
-                        context: results
-                            .map((r) => `Source: ${r.title} (${r.url})\n${r.content}`)
-                            .join("\n\n"),
-                        citations: results.map((r) => ({
-                            title: r.title,
-                            url: r.url,
-                            content: r.content.substring(0, 100) + "...",
-                        })),
-                    };
+                    return results.map((r) => ({
+                        title: r.title,
+                        url: r.url,
+                        content: r.content.slice(0, MAX_LIVE_CONTENT_CHARS),
+                    }));
                 }
-            } catch (err) {
-                console.error("Tavily search error:", err);
+            } catch (error) {
+                log.warn("Tavily search error", { error });
             }
         }
         return null;
+    }
+
+    /** Top matches from the bundled dataset above the similarity threshold. */
+    private async searchDataset(query: string, focus: Focus, onPhase?: RetrieveOptions["onPhase"]): Promise<RetrievedDoc[]> {
+        if (!this.vectorStoreAvailable()) return [];
+        onPhase?.("searching-dataset");
+
+        const store = await this.getVectorStore();
+        if (!store) return [];
+
+        try {
+            const filter = focus === "all" ? undefined : (doc: StoredDoc) => matchesFocus(doc.pageContent, focus);
+            const results = await store.similaritySearchWithScore(query, VECTOR_TOP_K, filter);
+            const kept = results.filter(([, score]) => cosineFromFaissScore(score) >= this.SIMILARITY_THRESHOLD);
+
+            if (kept.length === 0 && results.length > 0) {
+                log.debug("Vector store hit below similarity threshold", {
+                    similarity: Number(cosineFromFaissScore(results[0][1]).toFixed(3)),
+                    threshold: this.SIMILARITY_THRESHOLD,
+                });
+            }
+
+            return kept.map(([doc]) => ({
+                title: String(doc.metadata.title ?? ""),
+                url: String(doc.metadata.url ?? ""),
+                content: doc.pageContent,
+            }));
+        } catch (error) {
+            log.warn("Vector search error", { error });
+            return [];
+        }
     }
 
     /**
      * Performs the actual retrieval: vector store first, Tavily as fallback.
      * Recency queries ("latest ...") go to Tavily first instead.
      */
-    private async retrieveUncached(userMessage: string): Promise<RetrievedContext> {
-        if (isRecencyQuery(userMessage)) {
-            const live = await this.searchGovPortals(userMessage);
-            if (live) return { ...live, source: "tavily_search" };
+    private async retrieveUncached(query: string, options: RetrieveOptions & { focus: Focus }): Promise<RetrievedContext> {
+        const { focus, onPhase } = options;
+        const recency = isRecencyQuery(options.recencyText ?? query);
+        const now = () => new Date().toISOString();
+
+        if (recency) {
+            const live = await this.searchGovPortals(query, onPhase);
+            if (live) return { docs: live, source: "tavily_search", retrievedAt: now() };
         }
 
-        // Attempt to load VS, but don't block
-        await this.initializeVectorStore();
-
-        let context = "";
-        let source: RAGSource = "vector_store";
-        let citations: any[] = [];
-
-        // 1. Try Vector Search first
-        if (this.vectorStore) {
-            try {
-                // Search for relevant documents with score
-                const results = await this.vectorStore.similaritySearchWithScore(userMessage, 3);
-
-                if (results.length > 0) {
-                    const topScore = results[0][1];
-                    const similarity = cosineFromFaissScore(topScore);
-                    if (similarity >= this.SIMILARITY_THRESHOLD) {
-                        const filteredResults = results.filter(
-                            ([_, score]: [any, number]) => cosineFromFaissScore(score) >= this.SIMILARITY_THRESHOLD
-                        );
-                        context = filteredResults.map(([doc, _]: [any, any]) => doc.pageContent).join("\n\n");
-                        citations = filteredResults.map(([doc, _]: [any, any]) => doc.metadata);
-                        source = "vector_store";
-                    } else {
-                        log.debug("Vector store hit below similarity threshold", {
-                            similarity: Number(similarity.toFixed(3)),
-                            threshold: this.SIMILARITY_THRESHOLD,
-                        });
-                    }
-                }
-            } catch (err) {
-                console.error("Vector search error:", err);
-            }
+        const dataset = await this.searchDataset(query, focus, onPhase);
+        if (dataset.length > 0) {
+            return { docs: dataset, source: "vector_store", retrievedAt: now() };
         }
 
-        // 2. Fallback to Tavily if context is empty
-        if (!context && this.tavilyClient && !isRecencyQuery(userMessage)) {
-            console.log("⚠️ Low confidence or no local results. Falling back to Tavily...");
-            const live = await this.searchGovPortals(userMessage);
-            if (live) {
-                context = live.context;
-                citations = live.citations;
-                source = "tavily_search";
-            }
+        // Recency queries already tried live search above.
+        if (!recency) {
+            const live = await this.searchGovPortals(query, onPhase);
+            if (live) return { docs: live, source: "tavily_search", retrievedAt: now() };
         }
 
-        if (!context) {
-            source = "llm_direct";
-        }
-
-        return { context, source, citations };
-    }
-
-    public async query(userMessage: string, language: Language = 'en'): Promise<RAGResponse> {
-        const { context, source, citations } = await this.retrieveContext(userMessage);
-
-        // 3. Generate Response using Ollama with Language Dynamic Prompt
-        const languageInstruction = PROMPTS[language] || PROMPTS['en'];
-
-        const systemPrompt = `You are InBridge, a vital government service assistant for India.
-${languageInstruction}
-
-STRICT INSTRUCTIONS:
-1. Use the provided Context ONLY. If the Answer is not in the context, politely say you don't know in the target language.
-2. The Context is provided in English/Hindi. You MUST TRANSLATE and SYNTHESIZE the answer into the target language defined above.
-3. Be polite, formal, and accurate.
-4. Keep the answer concise.
-
-CONTEXT:
-${context}
-
-USER QUESTION:
-${userMessage}
-`;
-
-        try {
-            const response = await (this.llm as any).invoke([
-                ["system", systemPrompt],
-                ["human", userMessage]
-            ]);
-
-            return {
-                answer: response.content.toString(),
-                source: source,
-                citations: citations
-            };
-        } catch (err) {
-            console.error("LLM generation error:", err);
-            // IMPORTANT: Don't crash, return a user-friendly error
-            return {
-                answer: `Error: Unable to generate response. (${err instanceof Error ? err.message : 'Unknown Error'})`,
-                source: "llm_direct",
-                citations: []
-            };
-        }
+        return { docs: [], source: "llm_direct", retrievedAt: now() };
     }
 }
-
