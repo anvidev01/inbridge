@@ -112,10 +112,14 @@ body {
 
 /* ---- Focus Ring ------------------------------------------ */
 /* WCAG 2.4.11: visible focus indicator, min 3:1 contrast    */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: 4px;
+/* In the base layer so component utilities (outline-none on the composer's
+   textarea, rounded rings) can override it. No border-radius: outlines follow
+   the element's own corners, so round buttons get round rings. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 /* ---- Skip to Main Link ------------------------------------ */

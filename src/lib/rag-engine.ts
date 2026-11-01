@@ -49,6 +49,11 @@ interface TavilyResult {
  */
 const RECENCY_PATTERN = /\b(latest|newest|new|recent|recently|current|currently|today|this (week|month|year)|update[ds]?|announce[ds]?|announcement|launch(ed)?|deadline|last date|20[2-9]\d)\b|नया|नई|नए|नवीनतम|ताज़ा|ताजा/i;
 
+/** True when the text contains Devanagari script (Hindi, Marathi, ...). */
+export function hasDevanagari(text: string): boolean {
+    return /[\u0900-\u097F]/.test(text);
+}
+
 export function isRecencyQuery(query: string): boolean {
     return RECENCY_PATTERN.test(query);
 }
@@ -331,11 +336,14 @@ export class RAGEngine {
 
     /**
      * Performs the actual retrieval: vector store first, Tavily as fallback.
-     * Recency queries ("latest ...") go to Tavily first instead.
+     * Recency queries ("latest ...") and questions written in Devanagari go to
+     * Tavily first instead: the dataset is an English snapshot embedded with an
+     * English-only model, so Hindi text retrieves unrelated schemes.
      */
     private async retrieveUncached(query: string, options: RetrieveOptions & { focus: Focus }): Promise<RetrievedContext> {
         const { focus, onPhase } = options;
-        const recency = isRecencyQuery(options.recencyText ?? query);
+        const latest = options.recencyText ?? query;
+        const recency = isRecencyQuery(latest) || hasDevanagari(latest);
         const now = () => new Date().toISOString();
 
         if (recency) {
