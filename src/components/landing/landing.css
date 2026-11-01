@@ -1,0 +1,217 @@
+/* Landing page ("/") styles that Tailwind utilities cannot say cleanly:
+   the masthead mosaic, the drifting photograph, footnote markers and the
+   bar chart. Colours come from the theme tokens in app/globals.css only. */
+
+/* ---- Footnote markers ------------------------------------- */
+.lp-ref {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 0;
+  margin-left: 0.1em;
+  vertical-align: super;
+  letter-spacing: 0;
+}
+
+.lp-ref a {
+  color: var(--accent);
+  text-decoration: none;
+  border-radius: 2px;
+  transition: color 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lp-ref a:hover {
+    color: var(--fg);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+/* ---- Masthead mosaic -------------------------------------- */
+.lp-mosaic {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  grid-template-areas:
+    "bridge bridge ink"
+    "tone   farm   paper";
+  height: 38svh;
+  min-height: 240px;
+}
+
+.lp-mosaic > * {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.lp-cell-bridge { grid-area: bridge; }
+.lp-cell-ink { grid-area: ink; }
+.lp-cell-farm { grid-area: farm; }
+.lp-cell-tone { grid-area: tone; }
+.lp-cell-paper { grid-area: paper; }
+.lp-cell-station { grid-area: station; }
+.lp-cell-post { grid-area: post; }
+.lp-cell-station,
+.lp-cell-post { display: none; }
+
+@media (min-width: 768px) {
+  .lp-mosaic {
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-areas:
+      "bridge bridge ink farm  paper   post"
+      "bridge bridge ink tone  station post";
+    height: 48svh;
+    min-height: 320px;
+  }
+
+  .lp-cell-station,
+  .lp-cell-post { display: block; }
+}
+
+.lp-photo {
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.05);
+}
+
+/* The one moving picture: the bridge drifts and scales very slowly. */
+.lp-drift {
+  animation: lp-drift 26s ease-in-out infinite alternate;
+  transform-origin: 40% 60%;
+  will-change: transform;
+}
+
+@keyframes lp-drift {
+  from { transform: scale(1.04) translate3d(0, 0, 0); }
+  to { transform: scale(1.14) translate3d(-2.5%, -1.5%, 0); }
+}
+
+/* ---- Bars standing on the edge ---------------------------- */
+.lp-bars {
+  display: grid;
+  grid-template-columns: repeat(var(--bars), minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  height: 46svh;
+}
+
+.lp-bar {
+  position: relative;
+  display: block;
+  height: 100%;
+}
+
+.lp-bar-fill {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--v) * 100%);
+  min-height: 4px;
+  transform-origin: bottom;
+  transition: opacity 160ms ease;
+}
+
+html.js .lp-bars[data-reveal] .lp-bar-fill {
+  transform: scaleY(0);
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease;
+  transition-delay: calc(var(--bar-i, 0) * 25ms);
+}
+
+html.js .lp-bars[data-reveal].is-visible .lp-bar-fill {
+  transform: none;
+}
+
+.lp-bar-value {
+  position: absolute;
+  left: 0;
+  text-align: left;
+  bottom: calc(var(--v) * 100% + 10px);
+  white-space: nowrap;
+}
+
+.lp-bar-tip {
+  position: absolute;
+  bottom: calc(var(--v) * 100% + 10px);
+  z-index: 2;
+  width: max-content;
+  max-width: 15rem;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--fg);
+  color: var(--bg);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.lp-bar[data-side="left"] .lp-bar-tip { left: 0; }
+.lp-bar[data-side="right"] .lp-bar-tip { right: 0; }
+.lp-bar[data-last] .lp-bar-value { left: auto; right: 1.25rem; text-align: right; }
+.lp-bar[data-last] .lp-bar-tip { right: 1.25rem; }
+
+.lp-bar:hover .lp-bar-tip,
+.lp-bar:focus-visible .lp-bar-tip {
+  opacity: 1;
+  transform: none;
+}
+
+.lp-bar:hover .lp-bar-value,
+.lp-bar:focus-visible .lp-bar-value {
+  opacity: 0;
+}
+
+.lp-bar:hover .lp-bar-fill,
+.lp-bar:focus-visible .lp-bar-fill {
+  opacity: 0.8;
+}
+
+/* Rows on narrow screens: each bar grows from the left. */
+.lp-row-fill {
+  width: calc(var(--v) * 100%);
+  min-width: 4px;
+  transform-origin: left;
+}
+
+html.js .lp-rows[data-reveal] .lp-row-fill {
+  transform: scaleX(0);
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: calc(var(--bar-i, 0) * 25ms);
+}
+
+html.js .lp-rows[data-reveal].is-visible .lp-row-fill {
+  transform: none;
+}
+
+/* ---- Interface fragments ---------------------------------- */
+.lp-dots > span {
+  animation: lp-dot 1.4s ease-in-out infinite;
+}
+
+.lp-dots > span:nth-child(2) { animation-delay: 160ms; }
+.lp-dots > span:nth-child(3) { animation-delay: 320ms; }
+
+@keyframes lp-dot {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* Results that change under the live search rise in. */
+.lp-result {
+  animation: lp-result 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes lp-result {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-drift,
+  .lp-dots > span,
+  .lp-result { animation: none; }
+
+  html.js .lp-bars[data-reveal] .lp-bar-fill,
+  html.js .lp-rows[data-reveal] .lp-row-fill { transform: none; transition: none; }
+}

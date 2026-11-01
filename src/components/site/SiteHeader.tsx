@@ -1,8 +1,11 @@
 /**
  * Header for the marketing / info pages (/, /services, /about, /privacy, /terms).
+ * A plain bar: the logo, three links, the theme switch and one action. No
+ * border: the page below separates itself by space or by its own ground.
  * The chat has its own header inside ChatShell.
  */
 import Link from 'next/link';
+import { Logo } from '@/components/site/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 type NavKey = 'chat' | 'services' | 'about';
@@ -13,26 +16,36 @@ const NAV: { key: NavKey; href: string; label: string; short: string }[] = [
     { key: 'about', href: '/about', label: 'About', short: 'About' },
 ];
 
-export function SiteHeader({ current }: { current?: NavKey }) {
+interface SiteHeaderProps {
+    current?: NavKey;
+    /**
+     * Full-width bar on the page margins (the landing page). By default the
+     * bar sits in the same max-w-6xl column as the info pages' content.
+     */
+    wide?: boolean;
+}
+
+export function SiteHeader({ current, wide = false }: SiteHeaderProps) {
+    const frame = wide ? 'px-5 md:px-8' : 'mx-auto max-w-6xl px-4 sm:px-6';
     return (
-        <header className="border-b border-line">
-            <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 h-16">
+        <header>
+            <div className={`${frame} flex h-16 md:h-[4.5rem] items-center justify-between gap-2`}>
                 <Link
                     href="/"
-                    className="font-serif text-xl sm:text-2xl tracking-tight text-fg min-h-11 inline-flex items-center"
+                    className="inline-flex min-h-11 items-center text-fg transition-opacity hover:opacity-80"
                     aria-label="InBridge home"
                 >
-                    InBridge
+                    <Logo />
                 </Link>
                 <nav aria-label="Main" className="flex items-center">
                     <ul className="flex items-center">
                         {NAV.map((item) => (
-                            // Below 360px "About" moves to the footer only, so the bar never scrolls sideways.
-                            <li key={item.key} className={item.key === 'about' ? 'hidden min-[360px]:block' : undefined}>
+                            // Below 420px "About" lives in the footer only, so the bar stays one row.
+                            <li key={item.key} className={item.key === 'about' ? 'hidden min-[420px]:block' : undefined}>
                                 <Link
                                     href={item.href}
                                     aria-current={current === item.key ? 'page' : undefined}
-                                    className={`inline-flex items-center min-h-11 px-1.5 sm:px-3 text-sm transition-colors ${current === item.key ? 'text-fg' : 'text-muted hover:text-fg'}`}
+                                    className={`inline-flex min-h-11 items-center px-2 sm:px-3 text-[1.0625rem] underline-offset-[0.3em] decoration-[0.07em] transition-colors hover:text-fg hover:underline ${current === item.key ? 'text-fg underline' : 'text-muted'}`}
                                 >
                                     <span className="sm:hidden">{item.short}</span>
                                     <span className="hidden sm:inline">{item.label}</span>
@@ -41,6 +54,12 @@ export function SiteHeader({ current }: { current?: NavKey }) {
                         ))}
                     </ul>
                     <ThemeToggle className="ml-1" />
+                    <Link
+                        href="/chat"
+                        className="ml-3 hidden md:inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-[1.0625rem] font-medium text-accent-fg transition-[transform,opacity] duration-150 ease-out hover:opacity-90 active:scale-[0.97]"
+                    >
+                        Ask InBridge
+                    </Link>
                 </nav>
             </div>
         </header>
