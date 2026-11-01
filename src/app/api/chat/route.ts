@@ -1,5 +1,6 @@
 import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { buildRetrievalQuery, latestUserText, parseChatRequest } from '@/lib/ai/chat-request';
+import { englishSearchQuery } from '@/lib/ai/translate';
 import { buildSources } from '@/lib/ai/citations';
 import { checkRateLimit, clientIp, type RateLimitResult } from '@/lib/ai/ratelimit';
 import {
@@ -145,10 +146,14 @@ export async function POST(req: Request) {
                         retrieved = { docs: [], source: 'llm_direct', retrievedAt: new Date().toISOString() };
                     } else {
                         try {
-                            retrieved = await ragEngine.retrieveContext(buildRetrievalQuery(turns), {
+                            // Hindi questions are searched in English (the dataset
+                            // and its embeddings are English); the answer stays in Hindi.
+                            const latest = turns[turns.length - 1].content;
+                            const english = await englishSearchQuery(latest, req.signal);
+                            retrieved = await ragEngine.retrieveContext(english ?? buildRetrievalQuery(turns), {
                                 telemetry,
                                 focus,
-                                recencyText: turns[turns.length - 1].content,
+                                recencyText: english ?? latest,
                                 onPhase: (phase) =>
                                     writer.write({ type: 'data-phase', data: { phase }, transient: true }),
                             });
