@@ -191,7 +191,7 @@ describe('first-token budget', () => {
         assert.equal(attemptTimeoutMs(10_000, 4_000, 9_000), 0);
     });
 
-    test('default per-provider cap is 10s', () => {
-        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 10_000);
+    test('default per-provider cap is 18s (room for one 429 backoff)', () => {
+        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 18_000);
     });
 });

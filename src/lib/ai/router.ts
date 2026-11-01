@@ -44,8 +44,13 @@ export interface RouterDeps {
     firstTokenTimeoutMs: number;
 }
 
-/** Default per-provider first-token cap. Override with LLM_FIRST_TOKEN_TIMEOUT_MS. */
-export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 10_000;
+/**
+ * Default per-provider first-token cap. Override with LLM_FIRST_TOKEN_TIMEOUT_MS.
+ * 18 s leaves room for the AI SDK's own retry-with-backoff on a 429 (Groq's
+ * free tier limits tokens per minute); the request deadline still bounds the
+ * total so the route ends inside Vercel's 60 s.
+ */
+export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 18_000;
 
 function envTimeout(): number {
     const n = Number(process.env.LLM_FIRST_TOKEN_TIMEOUT_MS);

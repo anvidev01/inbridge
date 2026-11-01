@@ -132,7 +132,9 @@ const VECTOR_STORE_RETRY_MS = 60 * 1000;
 const VECTOR_TOP_K = 3;
 
 /** Characters of each live-search result passed to the model. */
-const MAX_LIVE_CONTENT_CHARS = 1500;
+// Per live-search result: enough for the facts an answer cites, small enough
+// to keep each request well inside a tokens-per-minute budget.
+const MAX_LIVE_CONTENT_CHARS = 1200;
 
 /**
  * Retrieval only: vector store, then live search of government portals. The
