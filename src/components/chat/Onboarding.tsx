@@ -67,16 +67,16 @@ export function Onboarding({ language }: { language: Language }) {
     const copy = COPY[language];
 
     return (
-        <section aria-labelledby="onboarding-heading" className="w-full rounded-lg border border-line bg-surface p-4 sm:p-5 text-left">
-            <h2 id="onboarding-heading" className="text-sm font-semibold text-fg mb-2">{copy.heading}</h2>
-            <ul className="space-y-1.5 text-sm text-muted leading-relaxed list-disc pl-5">
+        <section aria-labelledby="onboarding-heading" className="w-full rounded-lg bg-surface-2 px-4 py-3 text-left">
+            <h2 id="onboarding-heading" className="text-xs font-semibold text-fg mb-1.5">{copy.heading}</h2>
+            <ul className="space-y-1 text-xs text-muted leading-relaxed list-disc pl-4">
                 {copy.lines.map((line) => <li key={line}>{line}</li>)}
             </ul>
-            <div className="mt-3 flex justify-end">
+            <div className="mt-1 flex justify-end">
                 <button
                     type="button"
                     onClick={dismiss}
-                    className="min-h-11 px-4 rounded-full border border-line text-sm font-medium text-fg hover:bg-surface-2 transition-colors"
+                    className="min-h-11 px-4 -mr-2 rounded-full text-xs font-medium text-fg hover:bg-surface transition-colors"
                 >
                     {copy.ok}
                 </button>

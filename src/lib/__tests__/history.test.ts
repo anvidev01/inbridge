@@ -1,17 +1,22 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    ANSWER_STATE_PREFIXES,
     HISTORY_KEY,
+    HISTORY_NOTE,
     MAX_THREADS,
+    answerStateKeys,
     buildThread,
     deleteThread,
     deriveTitle,
     groupThreads,
     parseThreads,
     readThreads,
+    removeAnswerState,
     renameThread,
     upsertThread,
     writeThreads,
+    type KeyedStorageLike,
     type StorageLike,
     type Thread,
 } from '../history';
@@ -165,5 +170,72 @@ describe('storage I/O', () => {
         assert.deepEqual(readThreads(throwing), []);
         assert.deepEqual(readThreads(null), []);
         assert.equal(writeThreads(null, [thread('a', 1)]), null);
+    });
+});
+
+class KeyedMemoryStorage extends MemoryStorage implements KeyedStorageLike {
+    get length() { return this.data.size; }
+    key(i: number) { return [...this.data.keys()][i] ?? null; }
+}
+
+describe('answer state (feedback / checklist) clean-up', () => {
+    const keys = [
+        HISTORY_KEY,
+        'inbridge_language',
+        'inbridge_onboarding_v1',
+        'inbridge_feedback:m1',
+        'inbridge_checklist:m1',
+        'inbridge_feedback:m2',
+        'inbridge_checklist:m3',
+        'other_feedback:m1',
+    ];
+
+    test('covers the keys the answer renderer writes', () => {
+        assert.deepEqual([...ANSWER_STATE_PREFIXES], ['inbridge_feedback:', 'inbridge_checklist:']);
+    });
+
+    test('answerStateKeys without ids selects every feedback and checklist key, nothing else', () => {
+        assert.deepEqual(answerStateKeys(keys), [
+            'inbridge_feedback:m1', 'inbridge_checklist:m1', 'inbridge_feedback:m2', 'inbridge_checklist:m3',
+        ]);
+    });
+
+    test('answerStateKeys with ids selects only those messages', () => {
+        assert.deepEqual(answerStateKeys(keys, ['m1']), ['inbridge_feedback:m1', 'inbridge_checklist:m1']);
+        assert.deepEqual(answerStateKeys(keys, []), []);
+    });
+
+    test('removeAnswerState clears answer state but keeps history, language and onboarding', () => {
+        const storage = new KeyedMemoryStorage();
+        for (const k of keys) storage.setItem(k, '1');
+        assert.equal(removeAnswerState(storage), 4);
+        assert.deepEqual([...storage.data.keys()].sort(), [HISTORY_KEY, 'inbridge_language', 'inbridge_onboarding_v1', 'other_feedback:m1'].sort());
+    });
+
+    test('removeAnswerState for one thread leaves other messages alone', () => {
+        const storage = new KeyedMemoryStorage();
+        for (const k of keys) storage.setItem(k, '1');
+        assert.equal(removeAnswerState(storage, ['m1', 'm3']), 3);
+        assert.ok(storage.data.has('inbridge_feedback:m2'));
+        assert.ok(!storage.data.has('inbridge_checklist:m3'));
+    });
+
+    test('removeAnswerState never throws', () => {
+        const throwing: KeyedStorageLike = {
+            length: 1,
+            key() { throw new Error('SecurityError'); },
+            getItem() { return null; },
+            setItem() { },
+            removeItem() { },
+        };
+        assert.equal(removeAnswerState(throwing), 0);
+        assert.equal(removeAnswerState(null), 0);
+    });
+});
+
+describe('HISTORY_NOTE', () => {
+    test('has a non-empty note for every language', () => {
+        for (const lang of ['en', 'hi', 'hinglish'] as const) assert.ok(HISTORY_NOTE[lang].trim().length > 0);
+        assert.equal(HISTORY_NOTE.en, 'Saved only on this device.');
     });
 });
