@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { UIMessage } from 'ai';
 import { MessageBubble } from './MessageBubble';
+import type { InBridgeUIMessage } from '@/lib/chat/protocol';
 
 interface ChatWindowProps {
     messages: UIMessage[];
@@ -28,7 +29,7 @@ export function ChatWindow({ messages, isStreaming, onSuggestionClick }: ChatWin
 
                 {/* Thread Messages */}
                 {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} />
+                    <MessageBubble key={m.id} message={m as InBridgeUIMessage} isLast={false} isStreaming={false} phase={null} language="en" mode="default" onFollowUp={onSuggestionClick} onRegenerate={() => { }} />
                 ))}
 
                 {/* Streaming Indicator */}

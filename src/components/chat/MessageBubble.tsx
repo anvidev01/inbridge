@@ -3,8 +3,27 @@ import { format } from 'date-fns';
 import { UIMessage } from 'ai';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
-interface MessageBubbleProps {
-    message: UIMessage;
+import type { ChatMode, InBridgeUIMessage, Language, PhaseData } from '@/lib/chat/protocol';
+
+/**
+ * Contract between ChatWindow (owner: chat shell) and MessageBubble (owner:
+ * answer rendering). Do not change without updating both sides.
+ */
+export interface MessageBubbleProps {
+    message: InBridgeUIMessage;
+    /** True for the most recent assistant message (only it gets Regenerate). */
+    isLast: boolean;
+    /** True while this message is being generated. */
+    isStreaming: boolean;
+    /** Live pipeline phase for the in-flight answer (from transient data-phase parts). */
+    phase: PhaseData | null;
+    /** UI language, for labels, read-aloud voice and the bubble's lang attribute. */
+    language: Language;
+    mode: ChatMode;
+    /** Send a follow-up question as a new user message. */
+    onFollowUp: (text: string) => void;
+    /** Regenerate the last answer. */
+    onRegenerate: () => void;
 }
 
 // Extract text from the new v5 parts array
