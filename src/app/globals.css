@@ -1,38 +1,80 @@
 /* ============================================================
-   InBridge — Government of India Digital Services Platform
-   globals.css — Tailwind CSS v4 @theme design tokens + base
-   GIGW 3.0 · WCAG 2.2 AA · DPDP Act 2023
+   InBridge — independent AI assistant for Indian government services
+   globals.css — Tailwind CSS v4 design tokens + base styles
+
+   THEMING: every colour is a CSS variable. Dark (default) keeps the
+   original InBridge palette; light is selected with
+   <html data-theme="light">. Use the semantic utilities only:
+     bg-bg  bg-surface  bg-surface-2  border-line  text-fg  text-muted
+     text-accent  bg-accent  text-accent-fg  text-official  text-danger
+   Never hard-code hex values or neutral-* greys in components.
    ============================================================ */
 
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Class-free dark variant keyed off the theme attribute */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root,
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --surface: #171717;
+  --surface-2: #212121;
+  --line: #2a2a2a;
+  --fg: #ededed;
+  --muted: #a3a3a3;
+  --accent: #9fa8ff;
+  --accent-fg: #0a0a0a;
+  --official: #6ee7b7;
+  --danger: #fca5a5;
+  --ring: #9fa8ff;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --surface-2: #f2f0eb;
+  --line: #e4e1da;
+  --fg: #1a1a1a;
+  --muted: #57534e;
+  --accent: #283593;
+  --accent-fg: #ffffff;
+  --official: #047857;
+  --danger: #b91c1c;
+  --ring: #283593;
+  color-scheme: light;
+}
 
 /* ---- Design Tokens ---------------------------------------- */
 @theme inline {
-  /* Brand colours */
-  --color-navy: #1A237E;
-  /* Headers, primary buttons, nav */
-  --color-green: #2E7D32;
-  /* Submit buttons, success, CTAs */
-  --color-red: #C62828;
-  /* Errors, critical alerts        */
-  --color-bg: #0a0a0a;
-  /* Page background                */
-  --color-white: #FFFFFF;
-  /* Cards, form backgrounds        */
-  --color-muted: #616161;
-  /* Body text, borders             */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-official: var(--official);
+  --color-danger: var(--danger);
 
-  /* Semantic aliases */
-  --color-primary: var(--color-navy);
-  --color-success: var(--color-green);
-  --color-danger: var(--color-red);
-  --color-surface: var(--color-white);
+  /* Legacy brand names kept so untouched pages still compile */
+  --color-navy: #1A237E;
+  --color-green: #2E7D32;
+  --color-red: #C62828;
+  --color-white: #FFFFFF;
+  --color-primary: var(--color-accent);
+  --color-success: var(--color-official);
   --color-subtle: var(--color-muted);
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-  --font-mono: 'Geist Mono', 'Menlo', 'Courier New', monospace;
+  /* Typography — fonts are loaded with next/font in app/layout.tsx.
+     Devanagari falls through to Noto Sans Devanagari automatically. */
+  --font-sans: var(--font-inter), var(--font-noto-deva), system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
+  --font-serif: var(--font-source-serif), var(--font-noto-serif-deva), Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Spacing / sizing */
   --touch-target: 44px;
@@ -48,13 +90,14 @@
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
   font-size: 100%;
   /* respect user browser font-size setting */
 }
 
 body {
-  background-color: var(--color-bg);
-  color: #ededed;
+  background-color: var(--bg);
+  color: var(--fg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -66,8 +109,8 @@ body {
 /* ---- Focus Ring ------------------------------------------ */
 /* WCAG 2.4.11 — visible focus indicator, min 3:1 contrast    */
 :focus-visible {
-  outline: 3px solid var(--color-navy);
-  outline-offset: 3px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
   border-radius: 4px;
 }
 
@@ -79,8 +122,8 @@ body {
   left: 0;
   z-index: 9999;
   padding: 12px 20px;
-  background: var(--color-navy);
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--accent-fg);
   font-weight: 700;
   font-size: 1rem;
   border-radius: 0 0 8px 0;
@@ -124,12 +167,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #bbb;
+  background: var(--line);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #888;
+  background: var(--muted);
 }
 
 /* ---- Animations ------------------------------------------ */
@@ -201,4 +244,28 @@ body {
   /* IE and Edge */
   scrollbar-width: none;
   /* Firefox */
+}
+
+/* ---- Indian-language typography --------------------------- */
+/* Devanagari needs extra leading and must never be letter-spaced */
+:lang(hi) {
+  line-height: 1.8;
+  letter-spacing: normal !important;
+}
+
+/* Long URLs / IDs must never cause horizontal scroll at 320px */
+.break-anywhere {
+  overflow-wrap: anywhere;
+}
+
+/* ---- Reduced motion --------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
