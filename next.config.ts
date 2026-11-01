@@ -16,7 +16,14 @@ const nextConfig: NextConfig = {
     "/api/chat": [
       "./vector_store/**",
       "./models/**",
-      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/**",
+      // Only the four files the CPU runtime loads. Never the whole folder: on
+      // Vercel's linux/x64 build machine onnxruntime-node's postinstall also
+      // downloads CUDA provider libraries (hundreds of MB) into it, and an
+      // include wins over the excludes below (that took api/chat to 437 MB).
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/onnxruntime_binding.node",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1.21.0",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_shared.so",
     ],
   },
   // Keep the function well under Vercel's 250 MB limit. Vercel runs
@@ -33,6 +40,8 @@ const nextConfig: NextConfig = {
       "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/arm64/**",
       "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda*",
       "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_tensorrt*",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/x64/libcudnn*",
+      "./node_modules/**/onnxruntime-node/bin/napi-v3/linux/x64/libcublas*",
       "./node_modules/**/onnxruntime-web/**",
       "./node_modules/@xenova/**",
       "./node_modules/tesseract.js*/**",
