@@ -15,9 +15,9 @@ func RateLimitMiddleware(rdb *redis.Client, authLimit, anonLimit int, window tim
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			ip := r.Header.Get("X-Forwarded-For")
+			ip := ClientIP(r)
 			if ip == "" {
-				ip = r.RemoteAddr
+				ip = "unknown"
 			}
 
 			isAuth := r.Context().Value(CitizenIDKey) != nil

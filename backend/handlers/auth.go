@@ -41,6 +41,11 @@ func Register(db *pgxpool.Pool, privateKey *rsa.PrivateKey) http.HandlerFunc {
 			http.Error(w, "email, password, and full name are required", http.StatusBadRequest)
 			return
 		}
+		// bcrypt silently/loudly breaks past 72 bytes, so cap there.
+		if len(req.Password) < 8 || len(req.Password) > 72 {
+			http.Error(w, "password must be between 8 and 72 characters", http.StatusBadRequest)
+			return
+		}
 
 		citizen := models.Citizen{
 			ID:          uuid.New(),

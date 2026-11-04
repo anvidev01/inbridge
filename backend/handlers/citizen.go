@@ -30,7 +30,7 @@ func GetCitizenProfile(db *pgxpool.Pool) http.HandlerFunc {
 
 		var citizen models.Citizen
 		err := db.QueryRow(r.Context(),
-			"SELECT id, vid, full_name, email, date_of_birth, gender, state, district, mobile_number, created_at, updated_at FROM citizens WHERE id = $1",
+			"SELECT id, vid, full_name, email, date_of_birth, gender, state, district, COALESCE(mobile_number, ''), created_at, updated_at FROM citizens WHERE id = $1",
 			citizenID).Scan(&citizen.ID, &citizen.VID, &citizen.FullName, &citizen.Email, &citizen.DateOfBirth, &citizen.Gender, &citizen.State, &citizen.District, &citizen.MobileNumber, &citizen.CreatedAt, &citizen.UpdatedAt)
 
 		if err != nil {

@@ -18,9 +18,10 @@ func AuditMiddleware(db *pgxpool.Pool, action, resource string) func(next http.H
 			}
 
 			citizenID := citizenIDVal.(uuid.UUID)
-			ip := r.Header.Get("X-Forwarded-For")
-			if ip == "" {
-				ip = r.RemoteAddr
+			// inet column: pass NULL rather than an unparseable value.
+			var ip *string
+			if v := ClientIP(r); v != "" {
+				ip = &v
 			}
 			userAgent := r.UserAgent()
 
