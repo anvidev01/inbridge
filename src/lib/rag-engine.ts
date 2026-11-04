@@ -5,6 +5,7 @@ import type { RetrievedDoc } from "./ai/citations";
 import { GOV_DOMAINS, isGovUrl } from "./ai/gov-url";
 import { LRUCache, queryCacheKey } from "./cache/lru";
 import { log } from "./observability/logger";
+import { trackTavilyUsage, buildTavilyRecord } from "./observability/tavily-usage";
 import type { RAGSource, TelemetryBatch } from "./observability/telemetry";
 import type { LocalVectorStore, StoredDoc } from "./vector-search";
 
@@ -277,10 +278,19 @@ export class RAGEngine {
 
         for (const { query: attemptQuery, ...options } of attempts) {
             try {
-                const searchResult = await this.tavilyClient.search(attemptQuery ?? query, {
-                    searchDepth: "advanced",
-                    ...options,
-                });
+                const tavilyStart = Date.now();
+                let searchResult;
+                try {
+                    searchResult = await this.tavilyClient.search(attemptQuery ?? query, {
+                        searchDepth: "advanced",
+                        includeUsage: true,
+                        ...options,
+                    });
+                } catch (searchErr) {
+                    trackTavilyUsage(buildTavilyRecord({ startedAt: tavilyStart, searchDepth: "advanced", error: searchErr }));
+                    throw searchErr;
+                }
+                trackTavilyUsage(buildTavilyRecord({ startedAt: tavilyStart, searchDepth: "advanced", response: searchResult }));
                 const results = ((searchResult.results ?? []) as TavilyResult[])
                     .filter((r) => isGovUrl(r.url) && r.content)
                     .slice(0, 5);

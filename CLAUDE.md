@@ -8,6 +8,13 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - **Data**: Supabase Postgres (Mumbai) via `DATABASE_URL` (use the *Session pooler* string), Upstash Redis via `REDIS_URL` (`rediss://`).
 - Frontend reaches the backend through `NEXT_PUBLIC_API_URL` (browser-side fetches; JWT in `localStorage` as `inbridge_token`).
 
+## Tavily usage tracking
+- Every Tavily search (`searchGovPortals()` in `src/lib/rag-engine.ts`, up to 2 attempts per query) sends `includeUsage: true` and reports `{success, credits, latency_ms, search_depth, result_count, error_kind, request_id}` to the Go backend. The user's query text is NOT stored.
+- Frontend: `src/lib/observability/tavily-usage.ts` (`buildTavilyRecord`, `trackTavilyUsage`) — fire-and-forget via Next `after()`, 2s timeout, swallows all errors, never delays or fails chat. Uses `INTERNAL_METRICS_URL`/`NEXT_PUBLIC_API_URL` + `INTERNAL_API_TOKEN` (server-side only).
+- Backend: `POST /internal/telemetry/tavily` (insert, always 202) and `GET /internal/usage/tavily` (all-time + last-24h calls, failures, credits, avg latency) in `backend/handlers/tavily_usage.go`; both need header `X-Internal-Token`. Table `tavily_usage` from `backend/db/migrations/008_tavily_usage.sql` (also appended to `db/init.sql`).
+- **The table must be created in Supabase (run migration 008 in the SQL editor) before data is stored**; until then inserts are logged and dropped, chat is unaffected.
+- Check totals: `curl -H "X-Internal-Token: $INTERNAL_API_TOKEN" https://inbridge-api-2gwl.onrender.com/internal/usage/tavily`
+
 ## Health checks
 - `GET /healthz` liveness, `GET /readyz` readiness (postgres, redis, LLM breakers), `GET /api/v1/health`.
 - Render free tier sleeps when idle; first request can take ~15–50s. Warm it before demos.
@@ -23,6 +30,10 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-04 — Tavily usage tracking
+- **Add**: Tavily credit/latency/success tracking (see "Tavily usage tracking" above). New: `src/lib/observability/tavily-usage.ts`, `src/lib/__tests__/tavily-usage.test.ts`, `backend/handlers/tavily_usage.go` (+ `_test.go`), `backend/db/migrations/008_tavily_usage.sql`. Modified: `src/lib/rag-engine.ts` (`searchGovPortals()` now sends `includeUsage: true` and reports each Tavily attempt, so a query that retries unrestricted is counted twice; search/RAG behaviour unchanged), `backend/main.go` (two internal routes), `backend/db/init.sql`.
+- Verified: `tsc`, `npm test` (55 pass), `next build`, `go build`/`go vet`/Tavily+telemetry Go tests. Also verified end-to-end against a real Postgres 16 + Redis (docker): full `init.sql` applies cleanly, migration 008 is idempotent, auth enforced (401), success/failure/hostile/malformed records handled, totals correct, the TS tracker writes rows through the real server, and a DB outage returns 202 `stored:false` without error. Not yet verified against Supabase or a live Tavily key.
+
 ### 2026-11-01 — Editorial redesign, brand, Vercel size fix
 - **Vercel**: api/chat was 437-467 MB on Vercel only. onnxruntime-node's postinstall downloads CUDA libraries on any linux/x64 machine and the folder-wide include swept them in. Now only the four CPU runtime files are included, CUDA is excluded, and `.npmrc` skips the download. Local trace ≈ 93 MB; preview builds pass and the vector store answers on Vercel.
 - **Brand**: new mark (an arch whose keystone is the dot of an "i") as `src/app/icon.svg` + PNGs (16/32/180/192/512/maskable), near-black tile with the dot in green ink. Accent is green ink (indigo removed). Original `public/logo.*` kept.

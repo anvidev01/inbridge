@@ -130,6 +130,8 @@ func main() {
 			r.Use(middleware.InternalAuth(cfg.InternalAPIToken))
 			r.Post("/telemetry/llm", handlers.TelemetryIngest(llmBreakers))
 			r.Get("/llm/providers", handlers.LLMProviderHealth(llmBreakers))
+			r.Post("/telemetry/tavily", handlers.TavilyUsageIngest(dbPool))
+			r.Get("/usage/tavily", handlers.TavilyUsageTotals(dbPool))
 		})
 		log.Info().Msg("Internal routes mounted: POST /internal/telemetry/llm, GET /internal/llm/providers")
 	} else {
