@@ -30,6 +30,9 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-04 — Login 500 when Redis is down
+- **Fix**: `backend/middleware/ratelimit.go` returned HTTP 500 for every `/auth/login` and `/auth/register` whenever Redis was unreachable (fail-closed), even with Postgres healthy. It now fails open: logs "Redis rate limit error — failing open" and lets the request through. Trade-off: while Redis is down there is no rate limiting. Test: `middleware/ratelimit_test.go`.
+- **Status seen**: Supabase restored (`/readyz` postgres up); Upstash Redis still down — check `REDIS_URL` (must be `rediss://default:<password>@<host>:6379`) and that the Upstash database is active.
 ### 2026-11-04 — Tavily usage tracking
 - **Add**: Tavily credit/latency/success tracking (see "Tavily usage tracking" above). New: `src/lib/observability/tavily-usage.ts`, `src/lib/__tests__/tavily-usage.test.ts`, `backend/handlers/tavily_usage.go` (+ `_test.go`), `backend/db/migrations/008_tavily_usage.sql`. Modified: `src/lib/rag-engine.ts` (`searchGovPortals()` now sends `includeUsage: true` and reports each Tavily attempt, so a query that retries unrestricted is counted twice; search/RAG behaviour unchanged), `backend/main.go` (two internal routes), `backend/db/init.sql`.
 - Verified: `tsc`, `npm test` (55 pass), `next build`, `go build`/`go vet`/Tavily+telemetry Go tests. Also verified end-to-end against a real Postgres 16 + Redis (docker): full `init.sql` applies cleanly, migration 008 is idempotent, auth enforced (401), success/failure/hostile/malformed records handled, totals correct, the TS tracker writes rows through the real server, and a DB outage returns 202 `stored:false` without error. Not yet verified against Supabase or a live Tavily key.

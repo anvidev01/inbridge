@@ -45,8 +45,10 @@ func RateLimitMiddleware(rdb *redis.Client, authLimit, anonLimit int, window tim
 
 			_, err := pipe.Exec(ctx)
 			if err != nil {
-				log.Error().Err(err).Msg("Redis rate limit error")
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				// Fail open: Redis is auxiliary. If it is unreachable, rate limiting
+				// is skipped rather than taking login and signup down with it.
+				log.Error().Err(err).Msg("Redis rate limit error — failing open, request not rate limited")
+				next.ServeHTTP(w, r)
 				return
 			}
 
