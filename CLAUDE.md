@@ -30,6 +30,21 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-04 — Audit fixes
+Found by a full audit (live probes + a local docker sandbox running the real Go server), then fixed:
+- **Audit log never written**: `audit_log.ip_address` is `inet`; we inserted `host:port` / XFF lists. New `middleware.ClientIP` (strips port, first valid X-Forwarded-For entry, NULL when unknown) used in `middleware/audit.go`.
+- **Login rate limit did nothing**: it keyed on `RemoteAddr` incl. the ephemeral port. Now keyed on `ClientIP` (`middleware/ratelimit.go`). Caveat: XFF is client-controlled unless a trusted proxy overwrites it, so this is best-effort throttling.
+- **`GET /citizen/profile` 500**: NULL `mobile_number` scanned into `string`; now `COALESCE(mobile_number, '')`.
+- **Signup accepted 1-char passwords**: now 8-72 chars (bcrypt limit) in `handlers/auth.go`.
+- **`/metrics` was public**: now requires `INTERNAL_API_TOKEN` (Bearer or `X-Internal-Token`) when it is set; open in local dev. Prometheus: see commented `authorization` in `infra/observability/prometheus.yml`.
+- **Catalog links**: `/api/v1/services` hrefs pointed at redirecting/404 pages; now `/chat` (or `/services/pm-kisan`).
+- **Security headers** (`next.config.ts`): nosniff, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy (mic allowed for voice input), and a *partial* CSP (`frame-ancestors`, `base-uri`, `object-src`, `form-action`). A full `script-src` CSP needs nonces: not done.
+- **Dependencies**: `npm audit fix` (non-breaking): `next` 16.1.6 -> 16.4.5, critical advisories 4 -> 0. **Still open (accepted)**: 6 high, all need major bumps in the embedding/LLM stack (`@langchain/community`, `@huggingface/transformers`, `sharp`, `openai`, `zod`); not upgraded because vector search is tuned to Vercel's size limit. Revisit with a full chat regression test.
+- **CI**: `.github/workflows/ci.yml` runs tsc, eslint, npm test, gofmt, go vet, go test. The old `infra/github/workflows/{ci,deploy}.yml` are stale (Go 1.23, Fly.io deploy) and are NOT run by GitHub; left untouched. All Go files gofmt'd.
+- **Verified**: Go + frontend tests (404), `next build`, sandbox re-run of every failing scenario, local prod server headers/pages/scheme search. Chat rate limit on prod: 20/min then 429 (in-memory, per instance).
+**Still needs the owner (dashboards, cannot be done from code):**
+1. Render: set `INTERNAL_API_TOKEN` (and the same on Vercel), otherwise `/internal/*` is not mounted and LLM + Tavily telemetry is dropped. 2. Fix `REDIS_URL` (Upstash, `rediss://...`) so `/readyz` is ready and rate limiting works. 3. Supabase: run `backend/db/migrations/008_tavily_usage.sql`. 4. Vercel: add `www.inbridge.in` domain. 5. `NEXT_PUBLIC_AUTH_ENABLED=true` on Vercel to show the login UI (needs 1-3 healthy). 6. `/readyz` `ai_service: degraded` is cosmetic (`AI_SERVICE_URL` defaults to a non-existent host).
+
 ### 2026-11-04 — Login 500 when Redis is down
 - **Fix**: `backend/middleware/ratelimit.go` returned HTTP 500 for every `/auth/login` and `/auth/register` whenever Redis was unreachable (fail-closed), even with Postgres healthy. It now fails open: logs "Redis rate limit error — failing open" and lets the request through. Trade-off: while Redis is down there is no rate limiting. Test: `middleware/ratelimit_test.go`.
 - **Status seen**: Supabase restored (`/readyz` postgres up); Upstash Redis still down — check `REDIS_URL` (must be `rediss://default:<password>@<host>:6379`) and that the Upstash database is active.

@@ -6,6 +6,27 @@ const nextConfig: NextConfig = {
   // loads onnxruntime-node (native) and sharp.
   serverExternalPackages: ["faiss-node", "@huggingface/transformers", "onnxruntime-node", "sharp"],
   output: "standalone",
+  // Baseline security headers. The CSP is deliberately limited to directives
+  // that cannot break Next's inline scripts or the Wikimedia photos; a full
+  // script-src policy needs nonces and is a separate piece of work.
+  // microphone stays allowed for the chat's voice input.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+          },
+        ],
+      },
+    ];
+  },
   // Vercel/Next tracing only bundles imported modules, not data directories
   // read at runtime via path.join(process.cwd(), ...). Force-include:
   //  - vector_store/: the FAISS index + docstore (read by src/lib/vector-search.ts)
