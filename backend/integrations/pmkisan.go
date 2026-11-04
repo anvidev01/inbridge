@@ -28,7 +28,7 @@ func NewPMKisanClient(apiKey string) *PMKisanClient {
 // FetchStatus implements naive retry logic but still returns STUB response.
 func (p *PMKisanClient) FetchStatus(ctx context.Context, vid string) (string, error) {
 	log.Warn().Str("vid", vid).Msg("PM-KISAN FetchStatus is currently a STUB")
-	
+
 	var lastErr error
 	maxRetries := 3
 
@@ -41,7 +41,7 @@ func (p *PMKisanClient) FetchStatus(ctx context.Context, vid string) (string, er
 
 		lastErr = err
 		log.Warn().Err(err).Int("retry", i+1).Msg("PM-KISAN API fetch failed")
-		
+
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
@@ -54,5 +54,5 @@ func (p *PMKisanClient) FetchStatus(ctx context.Context, vid string) (string, er
 
 func mockHTTPCall() error {
 	// Replaced with a real HTTP client call in production
-	return nil 
+	return nil
 }

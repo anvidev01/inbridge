@@ -29,7 +29,7 @@ func AuditMiddleware(db *pgxpool.Pool, action, resource string) func(next http.H
 				INSERT INTO audit_log (citizen_id, action, resource, ip_address, user_agent, timestamp_ist)
 				VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')
 			`
-			
+
 			_, err := db.Exec(r.Context(), query, citizenID, action, resource, ip, userAgent)
 			if err != nil {
 				log.Error().Err(err).

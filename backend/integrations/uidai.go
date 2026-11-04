@@ -29,7 +29,7 @@ func NewUIDAIClient(baseURL string) *UIDAIClient {
 // GenerateOTP simulates sending an OTP to the Aadhaar linked mobile number.
 func (c *UIDAIClient) GenerateOTP(ctx context.Context, aadhaar string) error {
 	log.Warn().Msg("UIDAI GenerateOTP is currently a STUB")
-	
+
 	payload := map[string]string{"aadhaar": aadhaar, "action": "generate_otp"}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -50,7 +50,7 @@ func (c *UIDAIClient) GenerateOTP(ctx context.Context, aadhaar string) error {
 // OTP '123456' is used for demonstration purposes ONLY and should be removed.
 func (c *UIDAIClient) VerifyOTPAndGetVID(ctx context.Context, aadhaar, otp string) (string, error) {
 	log.Warn().Msg("UIDAI VerifyOTPAndGetVID is currently a STUB with demonstration OTP")
-	
+
 	// DANGER: In production, never hardcode OTP values.
 	if otp != "123456" {
 		return "", fmt.Errorf("invalid OTP: UIDAI verification failed")

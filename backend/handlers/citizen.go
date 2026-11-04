@@ -20,7 +20,7 @@ func GetCitizenProfile(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized: missing citizen context", http.StatusUnauthorized)
 			return
 		}
-		
+
 		citizenID, ok := citizenIDVal.(uuid.UUID)
 		if !ok {
 			log.Error().Msg("Invalid citizen ID type in context")
@@ -56,7 +56,7 @@ func UpdateCitizenProfile(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		
+
 		citizenID, ok := citizenIDVal.(uuid.UUID)
 		if !ok {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
