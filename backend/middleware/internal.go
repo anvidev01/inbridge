@@ -5,6 +5,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"net/http"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -40,6 +41,28 @@ func InternalAuth(token string) func(http.Handler) http.Handler {
 				return
 			}
 
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// MetricsAuth guards /metrics. It accepts the shared secret either as
+// `Authorization: Bearer <token>` (what Prometheus' `authorization` scrape
+// option sends) or in X-Internal-Token. main.go only applies it when
+// INTERNAL_API_TOKEN is set, so local development stays open.
+func MetricsAuth(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			presented := r.Header.Get(InternalTokenHeader)
+			if presented == "" {
+				if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+					presented = strings.TrimPrefix(auth, "Bearer ")
+				}
+			}
+			if token == "" || subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

@@ -116,7 +116,12 @@ func main() {
 	r.Use(middleware.CorsMiddleware(cfg.CORSAllowedOrigins))
 
 	// ── Observability (no auth required) ──
-	r.Get("/metrics", observability.Handler().ServeHTTP)
+	// When INTERNAL_API_TOKEN is set, /metrics requires it (Bearer or X-Internal-Token).
+	if cfg.InternalAPIToken != "" {
+		r.With(middleware.MetricsAuth(cfg.InternalAPIToken)).Get("/metrics", observability.Handler().ServeHTTP)
+	} else {
+		r.Get("/metrics", observability.Handler().ServeHTTP)
+	}
 
 	// ── Kubernetes-style health probes ──
 	r.Get("/healthz", handlers.Liveness())

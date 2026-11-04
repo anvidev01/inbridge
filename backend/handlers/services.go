@@ -15,22 +15,22 @@ import (
 
 // AllowedServiceCodes defines the list of valid services.
 var AllowedServiceCodes = map[string]bool{
-	"aadhaar":      true,
-	"pan":          true,
-	"passport":     true,
-	"licence":      true,
-	"birth":        true,
-	"marriage":     true,
-	"ration":       true,
-	"school":       true,
-	"pmkisan":      true,
-	"pension":      true,
-	"itr":          true,
-	"gst":          true,
-	"complaint":    true,
+	"aadhaar":     true,
+	"pan":         true,
+	"passport":    true,
+	"licence":     true,
+	"birth":       true,
+	"marriage":    true,
+	"ration":      true,
+	"school":      true,
+	"pmkisan":     true,
+	"pension":     true,
+	"itr":         true,
+	"gst":         true,
+	"complaint":   true,
 	"track-griev": true,
-	"escalate":     true,
-	"rti":          true,
+	"escalate":    true,
+	"rti":         true,
 }
 
 // ListServices returns the catalog of government services.
@@ -39,25 +39,25 @@ func ListServices() http.HandlerFunc {
 		// This is a static catalog for now, which is acceptable for reference data.
 		services := []map[string]interface{}{
 			// Personal
-			{"id": "aadhaar", "category": "personal", "icon": "🪪", "label": "Apply for Aadhaar", "description": "Enrol or get a new Aadhaar card", "href": "/apply/aadhaar", "isPopular": true},
-			{"id": "pan", "category": "personal", "icon": "💳", "label": "Update PAN", "description": "Correct or update your PAN details", "href": "/apply/pan"},
-			{"id": "passport", "category": "personal", "icon": "📘", "label": "Track Passport", "description": "Check passport application status", "href": "/status?type=passport"},
-			{"id": "licence", "category": "personal", "icon": "🚗", "label": "Download Licence", "description": "Get your driving licence PDF", "href": "/services/driving-licence"},
+			{"id": "aadhaar", "category": "personal", "icon": "🪪", "label": "Apply for Aadhaar", "description": "Enrol or get a new Aadhaar card", "href": "/chat", "isPopular": true},
+			{"id": "pan", "category": "personal", "icon": "💳", "label": "Update PAN", "description": "Correct or update your PAN details", "href": "/chat"},
+			{"id": "passport", "category": "personal", "icon": "📘", "label": "Track Passport", "description": "Check passport application status", "href": "/chat"},
+			{"id": "licence", "category": "personal", "icon": "🚗", "label": "Download Licence", "description": "Get your driving licence PDF", "href": "/chat"},
 			// Family
-			{"id": "birth", "category": "family", "icon": "👶", "label": "Birth Certificate", "description": "Apply for a birth certificate", "href": "/apply/birth-certificate"},
-			{"id": "marriage", "category": "family", "icon": "💍", "label": "Marriage Registration", "description": "Register your marriage online", "href": "/apply/marriage-registration"},
-			{"id": "ration", "category": "family", "icon": "🍚", "label": "Ration Card", "description": "Apply or update ration card", "href": "/apply/ration-card"},
-			{"id": "school", "category": "family", "icon": "🏫", "label": "School Admission", "description": "Admission to government schools", "href": "/apply/school-admission", "isNew": true},
+			{"id": "birth", "category": "family", "icon": "👶", "label": "Birth Certificate", "description": "Apply for a birth certificate", "href": "/chat"},
+			{"id": "marriage", "category": "family", "icon": "💍", "label": "Marriage Registration", "description": "Register your marriage online", "href": "/chat"},
+			{"id": "ration", "category": "family", "icon": "🍚", "label": "Ration Card", "description": "Apply or update ration card", "href": "/chat"},
+			{"id": "school", "category": "family", "icon": "🏫", "label": "School Admission", "description": "Admission to government schools", "href": "/chat", "isNew": true},
 			// Financial
 			{"id": "pmkisan", "category": "financial", "icon": "🌾", "label": "PM-KISAN Status", "description": "Check your PM-KISAN instalment status", "href": "/services/pm-kisan", "isPopular": true},
-			{"id": "pension", "category": "financial", "icon": "🧓", "label": "Check Pension", "description": "View your pension account details", "href": "/services/pension"},
-			{"id": "itr", "category": "financial", "icon": "📊", "label": "File ITR", "description": "File your income tax return", "href": "/services/itr"},
-			{"id": "gst", "category": "financial", "icon": "🏢", "label": "GST Registration", "description": "Register your business for GST", "href": "/apply/gst-registration"},
+			{"id": "pension", "category": "financial", "icon": "🧓", "label": "Check Pension", "description": "View your pension account details", "href": "/chat"},
+			{"id": "itr", "category": "financial", "icon": "📊", "label": "File ITR", "description": "File your income tax return", "href": "/chat"},
+			{"id": "gst", "category": "financial", "icon": "🏢", "label": "GST Registration", "description": "Register your business for GST", "href": "/chat"},
 			// Grievance
-			{"id": "complaint", "category": "grievance", "icon": "📣", "label": "File Complaint", "description": "Register a complaint with authorities", "href": "/apply/complaint"},
-			{"id": "track-griev", "category": "grievance", "icon": "🔍", "label": "Track Grievance", "description": "Track your filed grievance", "href": "/status?type=grievance"},
-			{"id": "escalate", "category": "grievance", "icon": "⬆️", "label": "Escalate Issue", "description": "Escalate unresolved grievance", "href": "/services/escalate"},
-			{"id": "rti", "category": "grievance", "icon": "📜", "label": "RTI Request", "description": "File Right to Information request", "href": "/apply/rti", "isNew": true},
+			{"id": "complaint", "category": "grievance", "icon": "📣", "label": "File Complaint", "description": "Register a complaint with authorities", "href": "/chat"},
+			{"id": "track-griev", "category": "grievance", "icon": "🔍", "label": "Track Grievance", "description": "Track your filed grievance", "href": "/chat"},
+			{"id": "escalate", "category": "grievance", "icon": "⬆️", "label": "Escalate Issue", "description": "Escalate unresolved grievance", "href": "/chat"},
+			{"id": "rti", "category": "grievance", "icon": "📜", "label": "RTI Request", "description": "File Right to Information request", "href": "/chat", "isNew": true},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(services)
@@ -103,7 +103,7 @@ func ApplyForService(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		
+
 		arn := fmt.Sprintf("ARN-%s-%d", req.ServiceCode, time.Now().Unix()%1000000000)
 
 		_, err = db.Exec(r.Context(),

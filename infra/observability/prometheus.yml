@@ -17,6 +17,10 @@ scrape_configs:
       - targets: ['inbridge-api:8080']
     metrics_path: '/metrics'
     scrape_interval: 10s
+    # When the backend runs with INTERNAL_API_TOKEN set, /metrics requires it.
+    # Put the token in a file, mount it, and uncomment:
+    # authorization:
+    #   credentials_file: /etc/prometheus/metrics_token
 
   # ── Next.js chat plane ──────────────────────────────────────────────────────
   # Deliberately NOT scraped. The chat plane runs per-request and is ephemeral on

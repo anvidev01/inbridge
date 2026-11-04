@@ -55,3 +55,29 @@ func TestInternalAuthEmptyTokenDenies(t *testing.T) {
 		t.Fatalf("expected 404 when no token is configured, got %d", rec.Code)
 	}
 }
+
+func TestMetricsAuth(t *testing.T) {
+	h := MetricsAuth("secret")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	cases := []struct {
+		name, header, value string
+		want                int
+	}{
+		{"no credentials", "", "", http.StatusUnauthorized},
+		{"wrong bearer", "Authorization", "Bearer nope", http.StatusUnauthorized},
+		{"bearer", "Authorization", "Bearer secret", http.StatusOK},
+		{"internal header", "X-Internal-Token", "secret", http.StatusOK},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			if c.header != "" {
+				req.Header.Set(c.header, c.value)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != c.want {
+				t.Fatalf("got %d, want %d", rec.Code, c.want)
+			}
+		})
+	}
+}
