@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { DEFAULT_GEMINI_MODEL } from '../src/lib/ai/gemini';
 
 // Load env vars
 dotenv.config({ path: '.env.local' });
@@ -12,18 +12,27 @@ async function checkGemini() {
     }
 
     try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-        const result = await model.generateContent('Say exactly: "OK"');
-        const text = result.response.text().trim();
-        if (text.includes("OK")) {
-            console.log('✓ Gemini API connection successful');
+        // Plain REST call, the same way the app talks to Gemini (src/lib/ai/gemini.ts).
+        const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Say exactly: "OK"' }] }] }),
+        });
+        if (!res.ok) {
+            console.error(`✗ Gemini API request failed (${model}): ${res.status} ${(await res.text()).replace(/\s+/g, ' ').slice(0, 200)}`);
+            return false;
+        }
+        const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+        const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
+        if (text.includes('OK')) {
+            console.log(`✓ Gemini API connection successful (${model})`);
             return true;
         }
         console.error(`✗ Unexpected Gemini response: ${text}`);
         return false;
-    } catch (error: any) {
-        console.error('✗ Gemini API request failed:', error.message);
+    } catch (error) {
+        console.error('✗ Gemini API request failed:', error instanceof Error ? error.message : error);
         return false;
     }
 }
