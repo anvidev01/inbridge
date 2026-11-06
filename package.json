@@ -18,7 +18,6 @@
     "@ai-sdk/groq": "^3.0.24",
     "@ai-sdk/react": "^3.0.99",
     "@anthropic-ai/sdk": "^0.78.0",
-    "@google/generative-ai": "^0.24.1",
     "@huggingface/transformers": "^3.7.6",
     "@langchain/community": "^1.0.4",
     "@langchain/core": "^1.0.6",
