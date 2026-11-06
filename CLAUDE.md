@@ -38,6 +38,12 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 - Hinglish questions found the wrong schemes
+- **Symptom**: "PM Kisan Yojna Ke liye kaise apply karein" returned unrelated schemes (Jharkhand skill centre, Haryana housing...) and the model said it could not find PM-KISAN's steps.
+- **Cause**: retrieval embeds with an English-only model. Hindi typed in Latin letters was not translated (the LLM translation only runs for Devanagari), and the word "Yojna" overlaps hundreds of scheme titles: `PM Kisan Yojna apply` matched random "Yojna" schemes while `PM Kisan scheme apply` found PM-KISAN.
+- **Fix**: `src/lib/ai/hinglish.ts` (`looksHinglish`, `normalizeHinglishQuery`), applied in `api/chat/route.ts` before retrieval: drops Hindi filler words, translates ~60 common words, turns Yojna/Yojana into "scheme". Rule-based on purpose (no network call, cannot time out). English queries are untouched (needs a clear Hindi function word to trigger). Measured on the real dataset, 14 realistic Hinglish questions: right scheme in the top 3 for **3 -> 12**. Tests: `hinglish.test.ts`.
+- **Remaining misses are dataset gaps**, not this step: Sukanya Samriddhi is not among the 4,740 schemes, and Pradhan Mantri Awas Yojana is only present as a component. The dataset search returns *something* above the 0.35 similarity threshold for such questions, so the live-search fallback (which only runs when the dataset returns nothing) never fires. Possible follow-up: also try live search when the top hit's title shares no words with the question.
+- The answer language follows the language selector (English by default), not the language typed.
 ### 2026-11-06 - "How do I apply for X?" answered with a refusal
 - **Symptom**: asking e.g. "How do I apply for UP scholarship?" produced "No. InBridge is an independent assistant..." and "InBridge cannot apply for anything..." instead of an answer. Retrieval was fine (the right scheme was the first source).
 - **Cause**: two unconditional lines in `src/lib/ai/system-prompt.ts` (the persona's "No. InBridge is an independent assistant" line and the "InBridge cannot apply for anything" rule) were over-applied by the lighter Gemini Flash-Lite model, which read a how-to question as a request to act for the user.
