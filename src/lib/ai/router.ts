@@ -46,11 +46,23 @@ export interface RouterDeps {
 
 /**
  * Default per-provider first-token cap. Override with LLM_FIRST_TOKEN_TIMEOUT_MS.
- * 18 s leaves room for the AI SDK's own retry-with-backoff on a 429 (Groq's
- * free tier limits tokens per minute); the request deadline still bounds the
- * total so the route ends inside Vercel's 60 s.
+ * Providers normally answer in 1-2 s. 12 s still leaves room for the AI SDK's own
+ * retry-with-backoff on a 429 (Groq's free tier limits tokens per minute), and,
+ * unlike a longer wait, lets a lone provider be tried twice (see
+ * attemptPlan) inside the request deadline, which keeps the route within
+ * Vercel's 60 s.
  */
-export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 18_000;
+export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 12_000;
+
+/**
+ * The providers to try, in order. Each is tried once, except that a lone
+ * provider gets a second attempt: with nothing to fail over to, a single slow
+ * or rate-limited response would otherwise surface as "service busy", yet a
+ * fresh request right after such a blip usually succeeds. Exported for tests.
+ */
+export function attemptPlan(chain: LLMProvider[]): LLMProvider[] {
+    return chain.length === 1 ? [chain[0], chain[0]] : chain;
+}
 
 function envTimeout(): number {
     const n = Number(process.env.LLM_FIRST_TOKEN_TIMEOUT_MS);
@@ -127,15 +139,16 @@ export async function routeChatStream(
         log.info('Skipping providers with open circuit breakers', { skipped });
     }
 
+    const plan = attemptPlan(chain);
     let lastError: unknown;
-    for (let i = 0; i < chain.length; i++) {
-        const provider = chain[i];
+    for (let i = 0; i < plan.length; i++) {
+        const provider = plan[i];
         const started = Date.now();
 
         const timeoutMs = attemptTimeoutMs(deps.firstTokenTimeoutMs, options.firstTokenDeadline, started);
         if (timeoutMs <= 0) {
             log.warn('First-token deadline passed; not trying further providers', {
-                skipped: chain.slice(i),
+                skipped: plan.slice(i),
             });
             break;
         }
@@ -182,8 +195,9 @@ export async function routeChatStream(
             if (!cutByDeadline) options.telemetry?.llmError(provider, Date.now() - started, kind);
             log.warn('LLM provider failed before first token', { provider, kind, cut_by_deadline: cutByDeadline, error });
 
-            const next = chain[i + 1];
-            if (next) options.telemetry?.failover(provider, next, kind);
+            // A retry of the same provider is not a failover to another one.
+            const next = plan[i + 1];
+            if (next && next !== provider) options.telemetry?.failover(provider, next, kind);
             lastError = error;
         }
     }

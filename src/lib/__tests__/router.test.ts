@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    attemptPlan,
     attemptTimeoutMs,
     DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
     firstTokenDeadline,
@@ -191,7 +192,91 @@ describe('first-token budget', () => {
         assert.equal(attemptTimeoutMs(10_000, 4_000, 9_000), 0);
     });
 
-    test('default per-provider cap is 18s (room for one 429 backoff)', () => {
-        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 18_000);
+    test('default per-provider cap is 12s (room for one 429 backoff, and for a retry)', () => {
+        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 12_000);
+    });
+
+    test('two attempts at the default cap fit inside the first-token budget with typical retrieval time', () => {
+        const budget = 60_000 - 25_000; // maxDuration - generation reserve, as in the route
+        const typicalRetrievalMs = 8_000;
+        assert.ok(typicalRetrievalMs + 2 * DEFAULT_FIRST_TOKEN_TIMEOUT_MS <= budget);
+    });
+});
+
+describe('a lone provider is retried once', () => {
+    test('attemptPlan repeats only a single-provider chain', () => {
+        assert.deepEqual(attemptPlan(['groq']), ['groq', 'groq']);
+        assert.deepEqual(attemptPlan(['anthropic', 'groq']), ['anthropic', 'groq']);
+        assert.deepEqual(attemptPlan([]), []);
+    });
+
+    /** Fails on its first call, works on every later one. */
+    function flaky(failure: 'error' | 'hang'): { stream: ProviderStream; calls: () => number } {
+        let n = 0;
+        return {
+            calls: () => n,
+            stream: async function* () {
+                n++;
+                if (n === 1) {
+                    if (failure === 'error') throw new Error('429 rate limit');
+                    await new Promise(() => {});
+                }
+                yield 'recovered';
+            },
+        };
+    }
+
+    test('a rate-limit blip on the only provider is retried and the user gets an answer', async () => {
+        const groq = flaky('error');
+        const telemetry = new TelemetryBatch();
+        const r = await routeChatStream(INPUT, { telemetry }, deps({ groq: groq.stream }));
+        assert.equal(r.provider, 'groq');
+        assert.equal(await collect(r.stream), 'recovered');
+        assert.equal(groq.calls(), 2);
+        // The failed try is still counted as an error, but it is not a failover.
+        assert.deepEqual(events(telemetry), ['llm_request', 'llm_request']);
+    });
+
+    test('a first-token timeout on the only provider is retried', async () => {
+        const groq = flaky('hang');
+        const r = await routeChatStream(INPUT, {}, deps({ groq: groq.stream }, { firstTokenTimeoutMs: 20 }));
+        assert.equal(await collect(r.stream), 'recovered');
+        assert.equal(groq.calls(), 2);
+    });
+
+    test('a lone provider that keeps failing is tried exactly twice, then reported unavailable', async () => {
+        let calls = 0;
+        const always: ProviderStream = async function* () {
+            calls++;
+            throw new Error('boom');
+        };
+        await assert.rejects(routeChatStream(INPUT, {}, deps({ groq: always })), ProviderUnavailableError);
+        assert.equal(calls, 2);
+    });
+
+    test('with several providers nothing is retried on the same one', async () => {
+        let aCalls = 0;
+        const a: ProviderStream = async function* () {
+            aCalls++;
+            throw new Error('boom');
+        };
+        await assert.rejects(routeChatStream(INPUT, {}, deps({ anthropic: a, groq: failing('boom') })), ProviderUnavailableError);
+        assert.equal(aCalls, 1);
+    });
+
+    test('the retry still respects the request deadline', async () => {
+        let calls = 0;
+        const hang: ProviderStream = async function* () {
+            calls++;
+            await new Promise(() => {});
+            yield 'never';
+        };
+        const started = Date.now();
+        await assert.rejects(
+            routeChatStream(INPUT, { firstTokenDeadline: Date.now() + 60 }, deps({ groq: hang }, { firstTokenTimeoutMs: 5000 })),
+            ProviderUnavailableError
+        );
+        assert.ok(Date.now() - started < 1000);
+        assert.equal(calls, 1, 'the deadline ran out during attempt 1, so there is no attempt 2');
     });
 });
