@@ -38,6 +38,9 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 — Provider diagnostics
+- **Add**: `GET /api/internal/providers` (header `X-Internal-Token` = `INTERNAL_API_TOKEN`, else 404): reports which LLM providers the *running* Vercel build has configured (booleans only, never keys), the failover `chain`, `ACTIVE_AI_PROVIDER`, model ids and the first-token cap. Use it to check whether a newly added key (e.g. `GOOGLE_GEMINI_API_KEY`) is actually live instead of waiting for a provider to fail. Test: `providers-route.test.ts`.
+- **Finding**: after a Gemini key was added and Vercel redeployed, a live burst still failed with no failover and no `gemini` metrics, i.e. Gemini was not in the chain of the running build.
 ### 2026-11-06 — "The answer service is busy" (intermittent)
 - **Cause**: only Groq is configured on Vercel (telemetry shows every real request served by `groq`, a `timeout` error on it, and no failover events ever). The router tried each configured provider once, so a single Groq timeout/429 with no fallback surfaced as the `provider_unavailable` card. Retrieval (sources) had already succeeded, which is why the sources showed but the answer did not.
 - **Fix** (`src/lib/ai/router.ts`): `attemptPlan` gives a *lone* provider a second attempt inside the same request (not counted as a failover); several providers: unchanged. The per-attempt first-token cap stays 18 s (a first try can ride out Groq's 429 back-off; the retry gets what is left of the 35 s budget = maxDuration 60 - 25 reserve). I briefly lowered it to 12 s and reverted: two 12 s waits made a rate-limited Groq fail at ~25 s. Tests in `router.test.ts` (437 pass).
