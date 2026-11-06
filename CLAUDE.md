@@ -38,6 +38,10 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 — Gemini fallback fixed
+- **Cause**: after the key was added under the right name, every Gemini attempt still failed (`api_error`) and fell through to Groq: the code's default `gemini-2.0-flash` is retired (404 "no longer available"). Found with `/api/internal/providers?probe=1`.
+- **Fix**: default is now `gemini-flash-lite-latest` (`src/lib/ai/gemini.ts`, `DEFAULT_GEMINI_MODEL`). Measured through the real adapter: flash-lite ~0.7-1.2 s to first text; `gemini-3.5-flash` 16 s; `gemini-flash-latest`/`gemini-3.8-flash` 503 "high demand"; `gemini-2.5-flash` 404 for new users. Setting `GEMINI_MODEL` on Vercel still overrides it.
+- Chain is now `gemini -> groq` (no `ACTIVE_AI_PROVIDER` set). Re-test candidates any time: `curl -H "X-Internal-Token: $T" "https://inbridge.in/api/internal/providers?probe=1&gemini_models=a,b"`.
 ### 2026-11-06 — Voice input message
 - Voice input uses the browser's Web Speech API; Brave (and Firefox) don't support it, which surfaces as a `network` error. That message used to say "needs an internet connection"; it now says the speech service is unreachable/blocked and suggests Chrome, Edge or Safari (en/hi/hinglish in `ChatInput.tsx`). The `Permissions-Policy` header still allows `microphone=(self)`.
 ### 2026-11-06 — Provider diagnostics

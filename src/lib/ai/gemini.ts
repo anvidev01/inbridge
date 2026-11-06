@@ -3,11 +3,13 @@ import { maxOutputTokens, TEMPERATURE, type ProviderInput } from './generation';
 
 /**
  * Model used when GEMINI_MODEL is not set. Google retires model ids (the old
- * default, gemini-2.0-flash, now answers 404 "no longer available"), so this is
- * the alias that always points at the current Flash model. Check what a key can
- * use with GET /api/internal/providers?probe=1.
+ * default, gemini-2.0-flash, answers 404 "no longer available"), so this is an
+ * alias that always points at the current Flash-Lite model. Chosen by measuring
+ * candidates through this adapter (GET /api/internal/providers?probe=1&gemini_models=...):
+ * flash-lite answers in ~1 s; the full Flash models took 16 s to a first token or
+ * returned 503 "high demand". Re-check there if answers get slow.
  */
-export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';
 
 /** Gemini content stream. Errors surface from the iterator and are rethrown. */
 export function streamGemini(input: ProviderInput): AsyncGenerator<string> {
