@@ -188,6 +188,12 @@ export async function GET(req: Request): Promise<Response> {
                 message: process.env.VERCEL_GIT_COMMIT_MESSAGE?.slice(0, 80) ?? null,
                 environment: process.env.VERCEL_ENV ?? null,
             },
+            // Per-instance health: a crash or an out-of-memory kill shows up as uptime restarting from 0.
+            runtime: {
+                uptimeS: Math.round(process.uptime()),
+                rssMB: Math.round(process.memoryUsage().rss / 1048576),
+                heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+            },
             ...(probes ? { probes } : {}),
             configured,
             expectedEnvNames: API_KEY_ENV,
