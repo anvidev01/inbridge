@@ -66,3 +66,23 @@ describe('punctuation rule', () => {
         }
     });
 });
+
+describe('prompt does not confuse "how do I apply" with "can you apply for me"', () => {
+    const prompt = buildSystemPrompt({ language: 'en', mode: 'default', focus: 'all', sources: [] });
+
+    test('the "not official" line is conditional and never a reply opener', () => {
+        assert.match(prompt, /Only when the user asks whether InBridge is official/);
+        assert.match(prompt, /never begin a reply with a disclaimer/i);
+        assert.doesNotMatch(prompt, /If asked whether you are official/);
+    });
+
+    test("how-to questions are answered; refusal is reserved for acting on the user's behalf", () => {
+        assert.match(prompt, /"how do I apply for X"[^.]*asks YOU to explain the process/);
+        assert.match(prompt, /Only if the user asks InBridge itself to act for them/);
+        assert.doesNotMatch(prompt, /InBridge cannot apply for anything, check an application's status or file complaints for the user\./);
+    });
+
+    test('answers must start with the answer, not "No"', () => {
+        assert.match(prompt, /Do not begin with "No"/);
+    });
+});
