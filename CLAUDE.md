@@ -30,6 +30,11 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 — Redis restored; two Render services discovered
+- **Cause of Redis outage**: the Upstash free database was deleted after 14 days of inactivity. Created a new one (`choice-crow-96500`, ap-south-1, eviction on) and set `REDIS_URL` (`rediss://default:<password>@choice-crow-96500.upstash.io:6379`) on Render. Password was reset in Upstash after it was exposed in chat. Upstash free DBs are deleted after 14 days idle: keep some traffic (or an uptime ping) so it is not removed again.
+- **There are TWO Render services from this repo**: `inbridge-api` (`inbridge-api.onrender.com`) and `inbridge-api-2gwl` (`inbridge-api-2gwl.onrender.com`). The live site's `NEXT_PUBLIC_API_URL` points at `-2gwl`, so env changes must be made there. Both need the same env vars. Decide on one, point Vercel at it, delete the other.
+- **Verified on `-2gwl`**: `/readyz` ready (postgres + redis up); login limiter returns 429 after 5 bad attempts per IP.
+- **Still open**: `INTERNAL_API_TOKEN` not set on Render (`/internal/*` 404, `/metrics` open, telemetry + Tavily tracking dropped); run migration 008 in Supabase; add `www.inbridge.in` in Vercel; `NEXT_PUBLIC_AUTH_ENABLED` off.
 ### 2026-11-04 — Audit fixes
 Found by a full audit (live probes + a local docker sandbox running the real Go server), then fixed:
 - **Audit log never written**: `audit_log.ip_address` is `inet`; we inserted `host:port` / XFF lists. New `middleware.ClientIP` (strips port, first valid X-Forwarded-For entry, NULL when unknown) used in `middleware/audit.go`.
