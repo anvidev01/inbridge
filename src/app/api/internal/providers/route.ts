@@ -24,8 +24,10 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export async function GET(req: Request): Promise<Response> {
-    const token = process.env.INTERNAL_API_TOKEN;
-    const presented = req.headers.get('x-internal-token') ?? '';
+    // Trimmed: a value pasted into a dashboard often carries a trailing newline or
+    // space, which HTTP clients strip from the header they send.
+    const token = process.env.INTERNAL_API_TOKEN?.trim();
+    const presented = (req.headers.get('x-internal-token') ?? '').trim();
     if (!token || !safeEqual(presented, token)) {
         return new Response('Not found', { status: 404 });
     }

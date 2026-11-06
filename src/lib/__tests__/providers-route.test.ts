@@ -25,6 +25,11 @@ describe('GET /api/internal/providers', () => {
         assert.equal((await GET(req(''))).status, 404);
     });
 
+    test('a token stored with stray whitespace or a newline still matches', async () => {
+        process.env.INTERNAL_API_TOKEN = '  secret-token\n';
+        assert.equal((await GET(req('secret-token'))).status, 200);
+    });
+
     test('reports which providers are configured and the order they are tried in', async () => {
         const res = await GET(req('secret-token'));
         assert.equal(res.status, 200);
