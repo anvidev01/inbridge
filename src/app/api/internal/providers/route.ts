@@ -182,6 +182,12 @@ export async function GET(req: Request): Promise<Response> {
         : undefined;
     return Response.json(
         {
+            // Which build is serving: Vercel sets these; they are what the running code was built from.
+            build: {
+                commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+                message: process.env.VERCEL_GIT_COMMIT_MESSAGE?.slice(0, 80) ?? null,
+                environment: process.env.VERCEL_ENV ?? null,
+            },
             ...(probes ? { probes } : {}),
             configured,
             expectedEnvNames: API_KEY_ENV,
