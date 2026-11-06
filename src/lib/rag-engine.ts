@@ -315,6 +315,9 @@ export class RAGEngine {
                     searchResult = await this.tavilyClient.search(attemptQuery ?? query, {
                         searchDepth: "advanced",
                         includeUsage: true,
+                        // Seconds. The SDK default is 60, which would let one stalled search use the
+                        // whole request; two attempts at 12 s still leave time to answer.
+                        timeout: 12,
                         ...options,
                     });
                 } catch (searchErr) {

@@ -4,6 +4,8 @@ import {
     attemptPlan,
     attemptTimeoutMs,
     DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
+    DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+    StreamStalled,
     firstTokenDeadline,
     routeChatStream,
     ProviderUnavailableError,
@@ -279,5 +281,49 @@ describe('a lone provider is retried once', () => {
         );
         assert.ok(Date.now() - started < 1000);
         assert.equal(calls, 1, 'the deadline ran out during attempt 1, so there is no attempt 2');
+    });
+});
+
+describe('a stalled answer is cut off instead of hanging', () => {
+    /** Sends one piece, then goes silent. */
+    function stallsAfterFirst(): { stream: ProviderStream; aborted: () => boolean } {
+        let aborted = false;
+        return {
+            aborted: () => aborted,
+            stream: async function* (input: ProviderInput) {
+                input.signal?.addEventListener('abort', () => { aborted = true; });
+                yield 'Hello';
+                await new Promise(() => {}); // never yields again
+            },
+        };
+    }
+
+    test('default idle timeout is 20s', () => {
+        assert.equal(DEFAULT_STREAM_IDLE_TIMEOUT_MS, 20_000);
+    });
+
+    test('silence mid-answer ends the stream with StreamStalled and cancels the provider request', async () => {
+        const p = stallsAfterFirst();
+        const r = await routeChatStream(INPUT, {}, deps({ groq: p.stream }, { streamIdleTimeoutMs: 40 }));
+        let got = '';
+        const started = Date.now();
+        await assert.rejects(
+            (async () => { for await (const c of r.stream) got += c; })(),
+            (err: unknown) => err instanceof StreamStalled
+        );
+        assert.equal(got, 'Hello', 'what had arrived is kept');
+        assert.ok(Date.now() - started < 1000, 'gave up at the idle limit, not later');
+        assert.equal(p.aborted(), true, 'the stalled provider request was cancelled');
+    });
+
+    test('a slow but steady stream is not cut off', async () => {
+        const steady: ProviderStream = async function* () {
+            for (const part of ['a', 'b', 'c', 'd']) {
+                await new Promise((r) => setTimeout(r, 15));
+                yield part;
+            }
+        };
+        const r = await routeChatStream(INPUT, {}, deps({ groq: steady }, { streamIdleTimeoutMs: 100 }));
+        assert.equal(await collect(r.stream), 'abcd');
     });
 });

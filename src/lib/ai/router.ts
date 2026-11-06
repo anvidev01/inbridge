@@ -42,6 +42,22 @@ export interface RouterDeps {
      * left before RouteOptions.firstTokenDeadline.
      */
     firstTokenTimeoutMs: number;
+    /**
+     * Longest silence tolerated between two pieces of an answer once it has started.
+     * Without it a provider that stalls mid-answer leaves the user waiting until the
+     * platform kills the request. Defaults to DEFAULT_STREAM_IDLE_TIMEOUT_MS.
+     */
+    streamIdleTimeoutMs?: number;
+}
+
+/** Default for RouterDeps.streamIdleTimeoutMs. Providers send a piece every fraction of a second. */
+export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 20_000;
+
+export class StreamStalled extends Error {
+    constructor(ms: number) {
+        super(`provider stream stalled: no data for ${Math.round(ms / 1000)}s`);
+        this.name = 'StreamStalled';
+    }
 }
 
 /**
@@ -177,7 +193,17 @@ export async function routeChatStream(
 
             options.telemetry?.llmSuccess(provider, Date.now() - started);
             log.info('LLM provider streaming', { provider, first_token_ms: Date.now() - started });
-            return { provider, stream: continueStream(first, iterator, stripper, detach) };
+            return {
+                provider,
+                stream: continueStream(
+                    first,
+                    iterator,
+                    stripper,
+                    detach,
+                    deps.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+                    () => controller.abort()
+                ),
+            };
         } catch (error) {
             clearTimeout(timer);
             detach();
@@ -219,22 +245,41 @@ async function probeFirstText(iterator: AsyncIterator<string>, stripper: ThinkSt
     }
 }
 
+/** iterator.next() that gives up if nothing arrives within `ms`. */
+async function nextWithIdleTimeout<T>(iterator: AsyncIterator<T>, ms: number): Promise<IteratorResult<T>> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new StreamStalled(ms)), ms);
+    });
+    try {
+        return await Promise.race([iterator.next(), stalled]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function* continueStream(
     first: string,
     iterator: AsyncIterator<string>,
     stripper: ThinkStripper,
-    detach: () => void
+    detach: () => void,
+    idleMs: number,
+    abortUpstream: () => void
 ): AsyncGenerator<string> {
     try {
         yield first;
         for (;;) {
-            const { value, done } = await iterator.next();
+            const { value, done } = await nextWithIdleTimeout(iterator, idleMs);
             if (done) break;
             const text = stripper.push(value);
             if (text) yield text;
         }
         const rest = stripper.flush();
         if (rest) yield rest;
+    } catch (error) {
+        // A stalled provider request is cancelled, not left running.
+        if (error instanceof StreamStalled) abortUpstream();
+        throw error;
     } finally {
         detach();
         // Stops the provider request if the consumer quit early.

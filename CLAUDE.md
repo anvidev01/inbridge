@@ -38,6 +38,9 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 - Guards against stalls (one live request hung for ~2 minutes)
+- **Observed once** on a cold live-search question: sources arrived, the answer never finished (client gave up at ~115 s). Not reproducible in 15 further runs (10 fresh live-search questions: 4-10 s each, all fine).
+- **Fixes**: (1) `router.ts`: an idle timeout on the streaming answer (`streamIdleTimeoutMs`, default 20 s, `StreamStalled`): silence mid-answer now ends with an error the user can retry, and the stalled provider request is aborted. (2) `rag-engine.ts`: each Tavily search has a 12 s timeout (SDK default 60 s). Tests in `router.test.ts`.
 ### 2026-11-06 - Vercel deployments were silently failing (3 commits never went live)
 - **Symptom**: after `a1fd221` Vercel marked every deployment failed (GitHub status "Vercel: failure", ~30 s), so production kept serving the last good build while new work looked deployed. Found because the live behaviour did not change and the commit shown by `/api/internal/providers` (`build.commit`) was missing.
 - **Cause**: `scripts/validate-chat-setup.ts` still imported `@google/generative-ai`, which `a1fd221` removed from `package.json`. Next's build type-checks `scripts/` too; a CLEAN install has no such package, so `Failed to type check`. Local checks passed only because a stale copy of the package was still in local `node_modules`.
