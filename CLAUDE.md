@@ -8,6 +8,14 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - **Data**: Supabase Postgres (Mumbai) via `DATABASE_URL` (use the *Session pooler* string), Upstash Redis via `REDIS_URL` (`rediss://`).
 - Frontend reaches the backend through `NEXT_PUBLIC_API_URL` (browser-side fetches; JWT in `localStorage` as `inbridge_token`).
 
+## Accounts and saved conversations
+- Sign-up/login (optional) is ON by default; `NEXT_PUBLIC_AUTH_ENABLED=false` hides it. Session = JWT (24 h) + `{name,email}` in localStorage (`inbridge_token`, `inbridge_user`); helpers in `src/lib/account.ts` (`authFetch` clears the session and fires `inbridge:auth-expired` on 401).
+- Chat history is local-first (`src/lib/history.ts`). When signed in, `src/lib/thread-sync.ts` mirrors it to the account: on login it pulls, merges (newest `updatedAt` per thread wins; equal time + different title = rename, local wins), pushes what the account lacks, then mirrors every save/rename/delete/clear (700 ms debounce, retries, `pagehide` flush). Status shown in the sidebar note.
+- **Cross-account safety**: `inbridge_threads_owner` records whose threads are cached on the device. A different account signing in discards them; anonymous (pre-login) threads are adopted. Sign-out wipes the local copy but never deletes from the account.
+- Known limit: no tombstones, so a thread deleted on device A returns if device B was offline and signs in later.
+- Backend: `chat_threads` table (`db/migrations/009_chat_threads.sql`, RLS on) with `GET /api/v1/chat/threads`, `PUT|DELETE /api/v1/chat/threads/{id}`, `DELETE /api/v1/chat/threads`, all JWT-scoped (`handlers/threads.go`). PUT never overwrites a newer copy; 1 MiB / 400 messages per thread; newest 50 kept. Register generates the VID server-side (the form collects no ID), normalises/validates email, 409 on duplicate email; Login is case-insensitive and returns `citizen` like register.
+- The old `conversations`/`messages` tables (005) are unused.
+
 ## Tavily usage tracking
 - Every Tavily search (`searchGovPortals()` in `src/lib/rag-engine.ts`, up to 2 attempts per query) sends `includeUsage: true` and reports `{success, credits, latency_ms, search_depth, result_count, error_kind, request_id}` to the Go backend. The user's query text is NOT stored.
 - Frontend: `src/lib/observability/tavily-usage.ts` (`buildTavilyRecord`, `trackTavilyUsage`) — fire-and-forget via Next `after()`, 2s timeout, swallows all errors, never delays or fails chat. Uses `INTERNAL_METRICS_URL`/`NEXT_PUBLIC_API_URL` + `INTERNAL_API_TOKEN` (server-side only).
@@ -30,6 +38,11 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 — Working login with saved conversations
+- **Fix**: sign-up was broken for the 2nd user: the form sends only name/email/password, the backend inserted `vid=''` into a `UNIQUE NOT NULL` column. VID is now generated server-side; email validated/lowercased; duplicate email -> 409 with a clear message (other DB errors are 500, not "email exists"). Login now returns `citizen` (the UI showed the email prefix as the name).
+- **Add**: account-backed chat history (see "Accounts and saved conversations"): migration 009, thread endpoints, `src/lib/account.ts`, `src/lib/thread-sync.ts`, listener hook in `history.ts`, login enabled by default, session validated against `/citizen/profile` on load, expired-session dialog, password show/hide + client validation in `LoginModal`, sidebar note ("Saved to your account…"). Privacy/about copy updated (history is no longer device-only once signed in).
+- **Verified**: Go + 430 frontend tests; real-Postgres sandbox for the API (isolation between users, stale-write protection, size/ID validation, 50-thread cap); 34-check Playwright run of the real UI (signup, chat saved to account, second device continues the same thread, sign-out cleanup, different user on the same device sees nothing, duplicate email, expired session, phone layout). Chat itself was mocked in that run (no LLM keys locally).
+- **Deploy order**: run `009_chat_threads.sql` in Supabase BEFORE deploying the backend, or thread sync shows "could not reach your account" (chat/login still work).
 ### 2026-11-06 — Redis restored; two Render services discovered
 - **Cause of Redis outage**: the Upstash free database was deleted after 14 days of inactivity. Created a new one (`choice-crow-96500`, ap-south-1, eviction on) and set `REDIS_URL` (`rediss://default:<password>@choice-crow-96500.upstash.io:6379`) on Render. Password was reset in Upstash after it was exposed in chat. Upstash free DBs are deleted after 14 days idle: keep some traffic (or an uptime ping) so it is not removed again.
 - **There are TWO Render services from this repo**: `inbridge-api` (`inbridge-api.onrender.com`) and `inbridge-api-2gwl` (`inbridge-api-2gwl.onrender.com`). The live site's `NEXT_PUBLIC_API_URL` points at `-2gwl`, so env changes must be made there. Both need the same env vars. Decide on one, point Vercel at it, delete the other.

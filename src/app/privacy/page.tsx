@@ -28,7 +28,8 @@ export default function PrivacyPage() {
             photos={['post-office', 'bridge-crowd', 'farmer', 'station']}
             intro={
                 <p>
-                    You can use InBridge without an account. This notice lists everything we handle, why, and who else
+                    You can use InBridge without an account; signing in is optional and only adds saved conversations
+                    across devices. This notice lists everything we handle, why, and who else
                     processes it. It is built with DPDP Act 2023 (Digital Personal Data Protection Act) requirements in
                     mind.
                 </p>
@@ -76,12 +77,14 @@ export default function PrivacyPage() {
                         <strong>What:</strong> past conversations and small preferences such as theme and language.
                     </li>
                     <li>
-                        <strong>Where:</strong> only in your browser&apos;s local storage on your device. It is not uploaded
-                        to us. The storage keys are <code>inbridge_threads_v1</code> (chat history),{' '}
+                        <strong>Where:</strong> in your browser&apos;s local storage on your device. If you are not signed
+                        in, it is not uploaded to us. If you sign in, your conversations are also saved to your account
+                        (see below) so you can continue them on another device. The storage keys are <code>inbridge_threads_v1</code> (chat history),{' '}
                         <code>inbridge_language</code>, <code>inbridge_onboarding_v1</code>, <code>inbridge_theme</code>,{' '}
                         <code>inbridge_feedback:*</code> (which answers you rated) and <code>inbridge_checklist:*</code>{' '}
-                        (ticked checklist items). If sign-in is enabled (it is currently off),{' '}
-                        <code>inbridge_token</code> and <code>inbridge_user</code> also hold your sign-in session.
+                        (ticked checklist items). When you are signed in,{' '}
+                        <code>inbridge_token</code>, <code>inbridge_user</code> and <code>inbridge_threads_owner</code>{' '}
+                        also hold your sign-in session and which account the saved history belongs to.
                     </li>
                     <li>
                         <strong>Kept:</strong> until you delete it (see &ldquo;How to delete your data&rdquo; below).
@@ -118,12 +121,26 @@ export default function PrivacyPage() {
                     </li>
                 </ul>
 
-                <h3>Account details, only if sign-in is turned on</h3>
-                <p>
-                    Sign-in is currently switched off and InBridge works without it. If it is turned on in future, an
-                    account stores your name, email address and a hashed password, used only to keep you signed in. This
-                    notice will be updated before that happens.
-                </p>
+                <h3>Account details, only if you sign in</h3>
+                <ul>
+                    <li>
+                        <strong>What:</strong> your name, email address and a hashed password (never the password
+                        itself), a randomly generated account ID, and, while you are signed in, your chat conversations
+                        (your questions and the answers shown, with their sources).
+                    </li>
+                    <li>
+                        <strong>Why:</strong> to keep you signed in and let you continue conversations on any device. Nothing
+                        else is done with them.
+                    </li>
+                    <li>
+                        <strong>Where:</strong> Render hosts the account service and Supabase (a PostgreSQL database in
+                        Mumbai) stores the records. A sign-in lasts 24 hours.
+                    </li>
+                    <li>
+                        <strong>Signing out</strong> removes the account&apos;s saved conversations from that device.
+                        They stay in your account until you delete them.
+                    </li>
+                </ul>
 
                 <p>
                     InBridge does not use advertising or analytics cookies and does not sell or share your data for
@@ -142,7 +159,7 @@ export default function PrivacyPage() {
                     </li>
                     <li><strong>Tavily</strong> searches .gov.in and .nic.in websites. It receives a search query based on your message.</li>
                     <li><strong>Vercel</strong> hosts the website and the chat server. It handles all requests, including IP addresses, and keeps the server logs that hold feedback lines.</li>
-                    <li><strong>Render and Supabase</strong> are used only if sign-in is enabled (it is currently off): Render hosts the account service and Supabase stores account records.</li>
+                    <li><strong>Render and Supabase</strong> are used only if you sign in: Render hosts the account service and Supabase stores account records and saved conversations.</li>
                 </ul>
                 <p>Each provider keeps data under its own terms and privacy policy.</p>
             </InfoSection>
@@ -151,8 +168,9 @@ export default function PrivacyPage() {
                 <ul>
                     <li>
                         <strong>Chat history:</strong> delete conversations in the chat history panel, or clear this
-                        site&apos;s data in your browser settings (site settings, then clear storage). Both remove it from
-                        your device; there is no copy on our servers.
+                        site&apos;s data in your browser settings (site settings, then clear storage). Without an account
+                        this removes every copy. When signed in, deleting a conversation or choosing clear all in the
+                        panel also deletes it from your account; clearing browser storage alone does not.
                     </li>
                     <li>
                         <strong>Feedback:</strong> feedback is not linked to your name or email. Choosing a thumbs up or

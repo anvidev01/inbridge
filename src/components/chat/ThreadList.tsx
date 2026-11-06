@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Check, CircleAlert, Pencil, Trash2, X } from 'lucide-react';
-import { DEFAULT_TITLE, HISTORY_NOTE, groupThreads, type Thread, type ThreadGroupKey } from '@/lib/history';
+import { DEFAULT_TITLE, HISTORY_NOTE, HISTORY_NOTE_ACCOUNT, HISTORY_NOTE_SYNC_FAILED, groupThreads, type Thread, type ThreadGroupKey } from '@/lib/history';
 import type { Language } from '@/lib/chat/protocol';
 
 interface ThreadListCopy {
@@ -77,6 +77,10 @@ interface ThreadListProps {
     language: Language;
     /** The last save to this device failed. */
     saveFailed: boolean;
+    /** Signed in: history is kept in the account as well as on this device. */
+    signedIn?: boolean;
+    /** Signed in, but the account copy is behind (network); it retries by itself. */
+    syncFailed?: boolean;
     threads: Thread[];
     currentId: string | null;
     onSelect: (thread: Thread) => void;
@@ -88,7 +92,7 @@ interface ThreadListProps {
 const iconButton = 'shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-muted hover:text-fg hover:bg-surface-2 transition-colors';
 
 /** Local history (F4): grouped by day, with rename, delete and clear-all. */
-export function ThreadList({ language, saveFailed, threads, currentId, onSelect, onRename, onDelete, onClearAll }: ThreadListProps) {
+export function ThreadList({ language, saveFailed, signedIn = false, syncFailed = false, threads, currentId, onSelect, onRename, onDelete, onClearAll }: ThreadListProps) {
     const copy = THREAD_LIST_COPY[language];
     const [editingId, setEditingId] = useState<string | null>(null);
     const [draft, setDraft] = useState('');
@@ -130,7 +134,7 @@ export function ThreadList({ language, saveFailed, threads, currentId, onSelect,
                     )
                 )}
             </div>
-            <p className="px-3 mb-2 text-[13px] leading-snug text-muted">{HISTORY_NOTE[language]}</p>
+            <p className="px-3 mb-2 text-[13px] leading-snug text-muted">{(signedIn ? (syncFailed ? HISTORY_NOTE_SYNC_FAILED : HISTORY_NOTE_ACCOUNT) : HISTORY_NOTE)[language]}</p>
             <div role="status" aria-live="polite">
                 {saveFailed && (
                     <p className="mx-3 mb-2 flex items-start gap-1.5 text-[13px] text-danger">

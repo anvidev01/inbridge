@@ -3,28 +3,45 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { LoaderCircle, X } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle, X } from 'lucide-react';
+import { apiBase, fetchWithRetry, saveSession } from '@/lib/account';
 
 /**
- * Login / sign-up against the Go backend. Only rendered when
- * NEXT_PUBLIC_AUTH_ENABLED === 'true' (see ChatShell): the backend's data
- * stores are not reliably up, and logging in has no benefit yet.
+ * Login / sign-up against the Go backend. Signing in saves the user's
+ * conversations to their account (see src/lib/thread-sync.ts), so they can be
+ * continued on any device. Not rendered when NEXT_PUBLIC_AUTH_ENABLED=false.
  */
 interface LoginModalProps {
     isOpen: boolean;
     onClose: () => void;
     onLogin: (name: string) => void;
+    /** Why the dialog opened unprompted, e.g. an expired session. */
+    notice?: string | null;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+
+/** Turn a raw API/network failure into something a person can act on. */
+function friendlyError(message: string, isSignUp: boolean): string {
+    if (/load failed|failed to fetch|networkerror|transient|abort|waking/i.test(message)) {
+        return 'Could not reach the server (it may be waking up). Please try again in a few seconds.';
+    }
+    if (/rate limit/i.test(message)) return 'Too many attempts. Please wait a minute and try again.';
+    if (/internal server error/i.test(message)) return 'Something went wrong on our side. Please try again.';
+    return message || (isSignUp ? 'Registration failed' : 'Invalid email or password');
 }
 
 const input = 'w-full h-11 px-3 rounded-lg border border-line bg-bg text-base text-fg placeholder:text-muted';
 
-export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
+export function LoginModal({ isOpen, onClose, onLogin, notice = null }: LoginModalProps) {
     const dialogRef = useRef<HTMLDialogElement>(null);
     const ids = useId();
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
     const [agreed, setAgreed] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -39,70 +56,64 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
+        if (loading) return;
         setError(null);
 
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const endpoint = isSignUp ? `${baseUrl}/api/v1/auth/register` : `${baseUrl}/api/v1/auth/login`;
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanName = name.trim().replace(/\s+/g, ' ');
+        if (!EMAIL_PATTERN.test(cleanEmail)) {
+            setError('Please enter a valid email address.');
+            return;
+        }
+        if (isSignUp && password.length < MIN_PASSWORD) {
+            setError(`Choose a password of at least ${MIN_PASSWORD} characters.`);
+            return;
+        }
+        if (isSignUp && !cleanName) {
+            setError('Please enter your name.');
+            return;
+        }
+        if (isSignUp && !agreed) {
+            setError('Please accept the Terms and Privacy policy to create an account.');
+            return;
+        }
 
+        setLoading(true);
+        const endpoint = `${apiBase()}/api/v1/auth/${isSignUp ? 'register' : 'login'}`;
         try {
             // Only what the user actually typed. No invented DOB, gender, state or ID.
-            const body = isSignUp ? { full_name: name, email, password } : { email, password };
+            const body = isSignUp ? { full_name: cleanName, email: cleanEmail, password } : { email: cleanEmail, password };
 
-            // The backend runs on a free-tier host that hibernates when idle: the
-            // first request after a spin-down can take ~50s, and its edge can
-            // return a transient 404/502/503 before the instance is routable.
-            // Retry those so a healthy backend isn't reported as "Load failed".
-            const postWithRetry = async (): Promise<Response> => {
-                const RETRYABLE = new Set([404, 502, 503, 504]);
-                let lastErr: unknown = null;
-                for (let attempt = 0; attempt < 4; attempt++) {
-                    try {
-                        const res = await fetch(endpoint, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body),
-                        });
-                        // A real auth response (200, 400, 401, 409) is final.
-                        // Only infra-level statuses are worth retrying.
-                        if (!RETRYABLE.has(res.status)) return res;
-                        lastErr = new Error(`transient ${res.status}`);
-                    } catch (err) {
-                        lastErr = err; // network error (offline, cold-start abort)
-                    }
-                    // brief backoff to let the instance finish waking
-                    await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
-                }
-                throw lastErr ?? new Error('The server is waking up. Please try again in a moment.');
-            };
-
-            const response = await postWithRetry();
+            // The backend runs on a free-tier host that hibernates when idle; retry the
+            // transient statuses it returns while waking so it isn't reported as "Load failed".
+            const response = await fetchWithRetry(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
 
             let data: { error?: string; token?: string; citizen?: { full_name?: string } } = {};
             const text = await response.text();
             try {
                 data = JSON.parse(text);
             } catch {
-                // Not JSON, use raw text if available
+                // The API answers errors in plain text.
             }
 
             if (!response.ok) {
-                throw new Error(data.error || text || (isSignUp ? 'Registration failed' : 'Invalid email or password'));
+                throw new Error(data.error || text.trim() || (isSignUp ? 'Registration failed' : 'Invalid email or password'));
             }
+            if (!data.token) throw new Error('The server did not return a session. Please try again.');
 
-            const displayName = data.citizen?.full_name || name || email.split('@')[0];
-            if (data.token) {
-                localStorage.setItem('inbridge_token', data.token);
-                localStorage.setItem('inbridge_user', JSON.stringify({ name: displayName, email }));
-            }
+            const displayName = data.citizen?.full_name || cleanName || cleanEmail.split('@')[0];
+            saveSession(data.token, { name: displayName, email: cleanEmail });
 
+            setPassword('');
+            setShowPassword(false);
             onLogin(displayName);
             onClose();
         } catch (err) {
-            const msg = String((err as Error)?.message || '');
-            setError(/load failed|failed to fetch|networkerror|transient/i.test(msg)
-                ? 'Could not reach the server (it may be waking up). Please try again in a few seconds.'
-                : msg);
+            setError(friendlyError(String((err as Error)?.message || ''), isSignUp));
         } finally {
             setLoading(false);
         }
@@ -132,13 +143,21 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                 </div>
 
                 <h2 id={`${ids}-title`} className="text-2xl font-bold mb-1">{isSignUp ? 'Create an account' : 'Welcome back'}</h2>
-                <p className="text-sm text-muted mb-6">{isSignUp ? 'Sign up to continue to InBridge.' : 'Log in to continue to InBridge.'}</p>
+                <p className="text-sm text-muted mb-6">
+                    {isSignUp
+                        ? 'Create an account to keep your conversations and continue them on any device.'
+                        : 'Log in to pick up your conversations where you left off.'}
+                </p>
+
+                {notice && !error && (
+                    <p role="status" className="mb-4 p-3 rounded-lg border border-line bg-surface-2 text-sm">{notice}</p>
+                )}
 
                 {error && (
                     <p role="alert" className="mb-4 p-3 rounded-lg border border-danger/40 text-danger text-sm">{error}</p>
                 )}
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
                     {isSignUp && (
                         <div>
                             <label htmlFor={`${ids}-name`} className="block text-sm font-medium mb-1.5">Full name</label>
@@ -151,15 +170,28 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                     </div>
                     <div>
                         <label htmlFor={`${ids}-password`} className="block text-sm font-medium mb-1.5">Password</label>
-                        <input
-                            id={`${ids}-password`}
-                            type="password"
-                            autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className={input}
-                            required
-                        />
+                        <div className="relative">
+                            <input
+                                id={`${ids}-password`}
+                                type={showPassword ? 'text' : 'password'}
+                                autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                aria-describedby={isSignUp ? `${ids}-pw-hint` : undefined}
+                                className={`${input} pr-11`}
+                                required
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((v) => !v)}
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                aria-pressed={showPassword}
+                                className="absolute right-0 top-0 inline-flex items-center justify-center w-11 h-11 text-muted hover:text-fg"
+                            >
+                                {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                            </button>
+                        </div>
+                        {isSignUp && <p id={`${ids}-pw-hint`} className="mt-1.5 text-[13px] text-muted">At least {MIN_PASSWORD} characters.</p>}
                     </div>
 
                     {isSignUp && (

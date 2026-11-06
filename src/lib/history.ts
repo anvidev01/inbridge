@@ -1,9 +1,10 @@
 /**
  * Local chat history (F4).
  *
- * Threads live only in this browser's localStorage. There is no login and no
+ * Threads live in this browser's localStorage. Without an account there is no
  * server copy, which is what the UI tells the user ("Saved only on this
- * device."). The pure functions at the top are unit-tested; the store at the
+ * device."). When signed in, src/lib/thread-sync.ts mirrors them to the user's
+ * account through the listener below. The pure functions at the top are unit-tested; the store at the
  * bottom wraps them for React's useSyncExternalStore.
  */
 import type { InBridgeUIMessage, Language } from './chat/protocol';
@@ -14,6 +15,19 @@ export const HISTORY_NOTE: Record<Language, string> = {
     en: 'Saved only on this device.',
     hi: 'सिर्फ़ इसी डिवाइस पर सेव होता है।',
     hinglish: 'Sirf isi device par save hota hai.',
+};
+
+/** Shown instead of HISTORY_NOTE while signed in. */
+export const HISTORY_NOTE_ACCOUNT: Record<Language, string> = {
+    en: 'Saved to your account, so you can continue on any device.',
+    hi: 'आपके खाते में सेव होता है, इसलिए आप किसी भी डिवाइस पर जारी रख सकते हैं।',
+    hinglish: 'Aapke account mein save hota hai, isliye kisi bhi device par jaari rakh sakte hain.',
+};
+/** Shown while signed in but the account copy could not be updated. */
+export const HISTORY_NOTE_SYNC_FAILED: Record<Language, string> = {
+    en: 'Saved on this device. Could not reach your account; will retry.',
+    hi: 'इस डिवाइस पर सेव है। खाते तक नहीं पहुँच सके; दोबारा कोशिश करेंगे।',
+    hinglish: 'Is device par save hai. Account tak nahi pahunch sake; dobara koshish karenge.',
 };
 
 /**
@@ -289,16 +303,48 @@ function commit(next: Thread[]): boolean {
     return stored !== null;
 }
 
+/**
+ * Mirrors local changes elsewhere (the signed-in account). The store stays the
+ * source of truth: a listener can never make a local write fail, and a throwing
+ * listener is ignored.
+ */
+export interface HistoryListener {
+    onSave(thread: Thread): void;
+    onDelete(id: string): void;
+    onClear(): void;
+}
+
+let listener: HistoryListener | null = null;
+
+export function setHistoryListener(next: HistoryListener | null): void {
+    listener = next;
+}
+
+function notify(fn: (l: HistoryListener) => void): void {
+    if (!listener) return;
+    try {
+        fn(listener);
+    } catch {
+        /* mirroring is best-effort */
+    }
+}
+
 /** Save the latest messages of a thread. Empty threads are not stored. */
 export function saveThread(id: string, messages: InBridgeUIMessage[], now: number = Date.now()): boolean {
     if (messages.length === 0) return false;
     const threads = readThreads(browserStorage());
     const existing = threads.find((t) => t.id === id);
-    return commit(upsertThread(threads, buildThread(existing, id, messages, now)));
+    const thread = buildThread(existing, id, messages, now);
+    const ok = commit(upsertThread(threads, thread));
+    if (ok) notify((l) => l.onSave(thread));
+    return ok;
 }
 
 export function renameStoredThread(id: string, title: string): boolean {
-    return commit(renameThread(readThreads(browserStorage()), id, title));
+    const ok = commit(renameThread(readThreads(browserStorage()), id, title));
+    const renamed = ok ? readThreads(browserStorage()).find((t) => t.id === id) : undefined;
+    if (renamed) notify((l) => l.onSave(renamed));
+    return ok;
 }
 
 /** Delete one thread and the per-answer state of its messages. */
@@ -307,11 +353,32 @@ export function deleteStoredThread(id: string): boolean {
     const threads = readThreads(storage);
     const gone = threads.find((t) => t.id === id);
     if (gone) removeAnswerState(storage, gone.messages.map((m) => m.id));
-    return commit(deleteThread(threads, id));
+    const ok = commit(deleteThread(threads, id));
+    notify((l) => l.onDelete(id));
+    return ok;
 }
 
 /** Clear all history, including every answer's feedback and checklist state. */
 export function clearStoredThreads(): boolean {
     removeAnswerState(browserStorage());
-    return commit([]);
+    const ok = commit([]);
+    notify((l) => l.onClear());
+    return ok;
+}
+
+/**
+ * Replace the local threads with `threads` (a merge result) WITHOUT notifying the
+ * listener: this is data arriving from the account, not a user action.
+ */
+export function replaceStoredThreads(threads: Thread[]): boolean {
+    return commit(threads);
+}
+
+/**
+ * Wipe the local copy only (sign-out on a shared device). Unlike
+ * clearStoredThreads it never reaches the account.
+ */
+export function resetLocalThreads(): void {
+    removeAnswerState(browserStorage());
+    commit([]);
 }

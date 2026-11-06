@@ -52,7 +52,7 @@ export const SOURCES = {
         n: 5,
         title: 'Your data on InBridge (privacy notice)',
         url: '/privacy',
-        note: 'What is kept, where, and for how long, including chat history held only in your browser and identity numbers blocked before they reach the AI model.',
+        note: 'What is kept, where, and for how long, including chat history held in your browser (and in your account only if you sign in) and identity numbers blocked before they reach the AI model.',
         external: false,
     },
     code: {

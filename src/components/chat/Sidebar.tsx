@@ -9,6 +9,7 @@ import {
 import { ThreadList } from './ThreadList';
 import { Logo } from '@/components/site/Logo';
 import type { Thread } from '@/lib/history';
+import type { SyncStatus } from '@/lib/thread-sync';
 import type { Language } from '@/lib/chat/protocol';
 
 type StarterKey = 'farmers' | 'students' | 'baby' | 'health' | 'business' | 'work' | 'home' | 'pension';
@@ -149,11 +150,13 @@ interface SidebarProps {
     user: string | null;
     onOpenLogin: () => void;
     onLogout: () => void;
+    /** Account sync state; 'off' when signed out. Drives the history note. */
+    syncStatus?: SyncStatus;
 }
 
 export function Sidebar({
     id, language, saveFailed, isOpen, onClose, threads, currentThreadId, onSelectThread, onRenameThread, onDeleteThread,
-    onClearThreads, onNewThread, onStarter, onDraftComplaint, authEnabled, user, onOpenLogin, onLogout,
+    onClearThreads, onNewThread, onStarter, onDraftComplaint, authEnabled, user, onOpenLogin, onLogout, syncStatus = 'off',
 }: SidebarProps) {
     const copy = SIDEBAR_COPY[language];
     const isDesktop = useIsDesktop();
@@ -249,6 +252,8 @@ export function Sidebar({
                         <ThreadList
                             language={language}
                             saveFailed={saveFailed}
+                            signedIn={Boolean(user)}
+                            syncFailed={syncStatus === 'error'}
                             threads={threads}
                             currentId={currentThreadId}
                             onSelect={(t) => { onSelectThread(t); onClose(); }}

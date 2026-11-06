@@ -88,7 +88,7 @@ export default function AboutPage() {
                     <li>The dataset is a snapshot. Schemes added, changed or closed after it was taken may be missing or out of date.</li>
                     <li>Live search depends on what government websites publish and what the search provider finds.</li>
                     <li>InBridge works in English, Hindi and Hinglish only.</li>
-                    <li>Chat history is stored only in your browser, so it does not follow you to another device.</li>
+                    <li>Chat history is stored in your browser. Sign in, optionally, to save it to your account and continue on another device.</li>
                 </ul>
             </InfoSection>
 

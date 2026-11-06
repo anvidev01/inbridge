@@ -23,8 +23,11 @@ import {
     renameStoredThread, saveThread, subscribeThreads, type Thread,
 } from '@/lib/history';
 
-/** Auth is hidden unless explicitly enabled; the backend's data stores are not reliably up. */
-const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === 'true';
+import {
+    AUTH_ENABLED, AUTH_EXPIRED_EVENT, authFetch, clearSession, readSession, saveSession,
+} from '@/lib/account';
+import { getSyncStatus, signOutCleanup, startSync, stopSync, subscribeSyncStatus } from '@/lib/thread-sync';
+
 const SIDEBAR_ID = 'inbridge-sidebar';
 const MAX_PREFILL = 500;
 
@@ -148,6 +151,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [user, setUser] = useState<string | null>(null);
     const [loginOpen, setLoginOpen] = useState(false);
+    const [loginNotice, setLoginNotice] = useState<string | null>(null);
     const [input, setInput] = useState(initialQuery.slice(0, MAX_PREFILL));
     const [language, setLanguage] = useLanguagePreference();
     const [mode, setMode] = useState<ChatMode>(initialMode);
@@ -160,6 +164,7 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
     const [saveFailed, setSaveFailed] = useState(false);
 
     const threads = useSyncExternalStore(subscribeThreads, getThreadsSnapshot, getServerThreadsSnapshot);
+    const syncStatus = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, () => 'off' as const);
     const isDesktop = useIsDesktop();
     const copy = COPY[language];
 
@@ -227,17 +232,56 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
         return () => { root.lang = previous || 'en-IN'; };
     }, [language]);
 
-    // Restore a previous login (only when auth is enabled).
+    // Restore a previous login: trust the stored token only after the API accepts
+    // it, then start mirroring history to the account. Offline or a sleeping
+    // backend must not sign the user out, so only a 401 does.
     useEffect(() => {
         if (!AUTH_ENABLED) return;
-        try {
-            const stored = localStorage.getItem('inbridge_user');
-            // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a stored login after mount
-            if (stored) setUser(JSON.parse(stored).name ?? null);
-        } catch {
-            localStorage.removeItem('inbridge_user');
-            localStorage.removeItem('inbridge_token');
-        }
+        const session = readSession();
+        if (!session) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a stored login after mount
+        setUser(session.user.name);
+        let cancelled = false;
+        void (async () => {
+            try {
+                const res = await authFetch('/api/v1/citizen/profile');
+                if (cancelled) return;
+                if (res.ok) {
+                    const profile = (await res.json()) as { full_name?: string; email?: string };
+                    const fresh = readSession();
+                    if (fresh && profile.full_name) {
+                        saveSession(fresh.token, { name: profile.full_name, email: profile.email || fresh.user.email });
+                        setUser(profile.full_name);
+                    }
+                }
+                // 401 is handled by the AUTH_EXPIRED_EVENT listener below.
+            } catch {
+                /* offline / waking up: stay signed in, sync retries on its own */
+            }
+            if (!cancelled && readSession()) void startSync();
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // The API rejected the token (expired after 24 h, or revoked): back to signed
+    // out, keep this device's threads (the same user can sign straight back in).
+    useEffect(() => {
+        if (!AUTH_ENABLED) return;
+        const onExpired = () => {
+            stopSync();
+            clearSession();
+            setUser(null);
+            setLoginNotice('Your session has expired. Please log in again to continue where you left off.');
+            setLoginOpen(true);
+        };
+        window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+        return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    }, []);
+
+    const handleLogin = useCallback((name: string) => {
+        setUser(name);
+        setLoginNotice(null);
+        void startSync();
     }, []);
 
     const focusComposer = useCallback(() => {
@@ -272,6 +316,16 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
         // The draft in the composer is kept on purpose.
         requestAnimationFrame(focusComposer);
     }, [leaveThread, focusComposer]);
+
+    const handleLogout = useCallback(() => {
+        // Mirroring off first, so wiping the local copy can never reach the account.
+        signOutCleanup();
+        clearSession();
+        setUser(null);
+        setSaveFailed(false);
+        // Leave the open conversation without saving it: it belonged to the account.
+        startNewThread({ save: false });
+    }, [startNewThread]);
 
     const openThread = useCallback((thread: Thread) => {
         if (thread.id === session.id) return;
@@ -369,16 +423,13 @@ export function ChatShell({ initialQuery = '', initialMode = 'default' }: ChatSh
                 onDraftComplaint={draftComplaint}
                 authEnabled={AUTH_ENABLED}
                 user={user}
-                onOpenLogin={() => setLoginOpen(true)}
-                onLogout={() => {
-                    setUser(null);
-                    localStorage.removeItem('inbridge_user');
-                    localStorage.removeItem('inbridge_token');
-                }}
+                onOpenLogin={() => { setLoginNotice(null); setLoginOpen(true); }}
+                onLogout={handleLogout}
+                syncStatus={syncStatus}
             />
 
             {AUTH_ENABLED && (
-                <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(false)} onLogin={setUser} />
+                <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(false)} onLogin={handleLogin} notice={loginNotice} />
             )}
 
             {/* Inert while the mobile drawer is open: keeps focus inside the drawer. */}
