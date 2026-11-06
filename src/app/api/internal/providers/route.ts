@@ -18,10 +18,13 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import { API_KEY_ENV, PREFERENCE_ORDER, buildChain, isConfigured } from '../../../../lib/ai/chain';
+import { DEFAULT_GEMINI_MODEL, streamGeminiWith } from '../../../../lib/ai/gemini';
 import { DEFAULT_FIRST_TOKEN_TIMEOUT_MS } from '../../../../lib/ai/router';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Probing runs real model calls, one after another.
+export const maxDuration = 60;
 
 /** Keep operator output short and free of anything that looks like a key. */
 function clean(text: string): string {
@@ -49,7 +52,7 @@ interface ProbeResult {
 
 async function probeGemini(): Promise<ProbeResult> {
     const key = process.env.GOOGLE_GEMINI_API_KEY as string;
-    const modelInUse = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const modelInUse = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
     const headers = { 'x-goog-api-key': key };
     const out: ProbeResult = { modelInUse };
     try {
@@ -77,6 +80,51 @@ async function probeGemini(): Promise<ProbeResult> {
         out.error = clean(error instanceof Error ? error.message : String(error));
     }
     return out;
+}
+
+interface StreamTest {
+    model: string;
+    ok: boolean;
+    firstTextMs?: number;
+    totalMs?: number;
+    chars?: number;
+    sample?: string;
+    error?: string;
+}
+
+const MODEL_ID = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * Runs a real answer through the app's own Gemini adapter, so thinking models
+ * that spend the output budget on reasoning (short or empty answers) show up here
+ * rather than in front of a user.
+ */
+async function testGeminiModels(models: string[]): Promise<StreamTest[]> {
+    const results: StreamTest[] = [];
+    for (const model of models.filter((m) => MODEL_ID.test(m)).slice(0, 4)) {
+        const started = Date.now();
+        const test: StreamTest = { model, ok: false };
+        try {
+            let text = '';
+            const stream = streamGeminiWith(model, {
+                system: 'You are InBridge, a guide to Indian government schemes. Answer in 3 short numbered steps, then one sentence on documents needed.',
+                turns: [{ role: 'user', content: 'How do I apply for PM-Kisan?' }],
+                signal: AbortSignal.timeout(20_000),
+            });
+            for await (const chunk of stream) {
+                if (text === '') test.firstTextMs = Date.now() - started;
+                text += chunk;
+            }
+            test.totalMs = Date.now() - started;
+            test.chars = text.length;
+            test.sample = text.slice(0, 160).replace(/\s+/g, ' ');
+            test.ok = text.length > 150;
+        } catch (error) {
+            test.error = clean(error instanceof Error ? error.message : String(error));
+        }
+        results.push(test);
+    }
+    return results;
 }
 
 async function probeGroq(): Promise<ProbeResult> {
@@ -120,9 +168,12 @@ export async function GET(req: Request): Promise<Response> {
 
     const configured = Object.fromEntries(PREFERENCE_ORDER.map((p) => [p, isConfigured(p)]));
     const wantProbe = new URL(req.url).searchParams.get('probe') === '1';
+    const candidates = (new URL(req.url).searchParams.get('gemini_models') ?? '').split(',').filter(Boolean);
     const probes = wantProbe
         ? {
-              ...(isConfigured('gemini') ? { gemini: await probeGemini() } : {}),
+              ...(isConfigured('gemini')
+                  ? { gemini: { ...(await probeGemini()), ...(candidates.length ? { streamTests: await testGeminiModels(candidates) } : {}) } }
+                  : {}),
               ...(isConfigured('groq') ? { groq: await probeGroq() } : {}),
           }
         : undefined;
@@ -136,7 +187,7 @@ export async function GET(req: Request): Promise<Response> {
             chain: buildChain(),
             models: {
                 groq: process.env.GROQ_MODEL ?? null,
-                gemini: process.env.GEMINI_MODEL ?? null,
+                gemini: process.env.GEMINI_MODEL ?? `${DEFAULT_GEMINI_MODEL} (default)`,
                 anthropic: process.env.ANTHROPIC_MODEL ?? null,
             },
             firstTokenTimeoutMs: Number(process.env.LLM_FIRST_TOKEN_TIMEOUT_MS) || DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
