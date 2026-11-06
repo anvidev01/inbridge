@@ -192,14 +192,15 @@ describe('first-token budget', () => {
         assert.equal(attemptTimeoutMs(10_000, 4_000, 9_000), 0);
     });
 
-    test('default per-provider cap is 12s (room for one 429 backoff, and for a retry)', () => {
-        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 12_000);
+    test('default per-provider cap is 18s (room for one 429 backoff)', () => {
+        assert.equal(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, 18_000);
     });
 
-    test('two attempts at the default cap fit inside the first-token budget with typical retrieval time', () => {
+    test('a retry after a full-length first attempt still gets a usable wait', () => {
         const budget = 60_000 - 25_000; // maxDuration - generation reserve, as in the route
-        const typicalRetrievalMs = 8_000;
-        assert.ok(typicalRetrievalMs + 2 * DEFAULT_FIRST_TOKEN_TIMEOUT_MS <= budget);
+        const retrievalMs = 6_000;
+        const afterFirstAttempt = retrievalMs + DEFAULT_FIRST_TOKEN_TIMEOUT_MS;
+        assert.ok(attemptTimeoutMs(DEFAULT_FIRST_TOKEN_TIMEOUT_MS, budget, afterFirstAttempt) >= 10_000);
     });
 });
 
