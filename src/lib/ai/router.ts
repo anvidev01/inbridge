@@ -105,6 +105,8 @@ export interface RouteOptions {
      * has passed no further provider is tried. Build it with firstTokenDeadline.
      */
     firstTokenDeadline?: number;
+    /** Reports progress (see observability/trace.ts). Never throws into the router. */
+    onStage?: (stage: string, detail?: string) => void;
 }
 
 /**
@@ -150,7 +152,10 @@ export async function routeChatStream(
         throw new ProviderUnavailableError('No LLM provider is configured');
     }
 
-    const { chain, skipped } = applyBreakerState(configured, await deps.availableProviders());
+    options.onStage?.('router-start');
+    const available = await deps.availableProviders();
+    options.onStage?.('providers-checked');
+    const { chain, skipped } = applyBreakerState(configured, available);
     if (skipped.length > 0) {
         log.info('Skipping providers with open circuit breakers', { skipped });
     }
@@ -160,6 +165,7 @@ export async function routeChatStream(
     for (let i = 0; i < plan.length; i++) {
         const provider = plan[i];
         const started = Date.now();
+        options.onStage?.('attempt', provider);
 
         const timeoutMs = attemptTimeoutMs(deps.firstTokenTimeoutMs, options.firstTokenDeadline, started);
         if (timeoutMs <= 0) {
@@ -191,6 +197,7 @@ export async function routeChatStream(
             const first = await Promise.race([probeFirstText(iterator, stripper), timeout]);
             clearTimeout(timer);
 
+            options.onStage?.('first-token', provider);
             options.telemetry?.llmSuccess(provider, Date.now() - started);
             log.info('LLM provider streaming', { provider, first_token_ms: Date.now() - started });
             return {
@@ -214,6 +221,7 @@ export async function routeChatStream(
             if (input.signal?.aborted) throw error;
 
             const kind = error instanceof FirstTokenTimeout ? 'timeout' : classifyError(error);
+            options.onStage?.('attempt-failed', `${provider}:${kind}`);
             // A timeout that only fired because the request's own deadline
             // shortened the wait says nothing about the provider's health, so
             // it is not reported to telemetry (which feeds the circuit breakers).

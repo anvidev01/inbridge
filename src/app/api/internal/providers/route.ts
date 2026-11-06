@@ -19,6 +19,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { API_KEY_ENV, PREFERENCE_ORDER, buildChain, isConfigured } from '../../../../lib/ai/chain';
 import { DEFAULT_GEMINI_MODEL, streamGeminiWith } from '../../../../lib/ai/gemini';
+import { recentTraces } from '../../../../lib/observability/trace';
 import { DEFAULT_FIRST_TOKEN_TIMEOUT_MS } from '../../../../lib/ai/router';
 
 export const runtime = 'nodejs';
@@ -194,6 +195,7 @@ export async function GET(req: Request): Promise<Response> {
                 rssMB: Math.round(process.memoryUsage().rss / 1048576),
                 heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1048576),
             },
+            traces: recentTraces(),
             ...(probes ? { probes } : {}),
             configured,
             expectedEnvNames: API_KEY_ENV,

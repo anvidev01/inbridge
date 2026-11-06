@@ -26,6 +26,7 @@ import {
 import { checkGuardrails, hasInjection, maskPII, type GuardrailKind } from '@/lib/guardrails';
 import { log } from '@/lib/observability/logger';
 import { TelemetryBatch } from '@/lib/observability/telemetry';
+import { startTrace } from '@/lib/observability/trace';
 import { DATASET_LABEL, RAGEngine, type RetrievedContext } from '@/lib/rag-engine';
 
 export const runtime = 'nodejs';
@@ -135,6 +136,7 @@ export async function POST(req: Request) {
 
         const signal = req.signal;
         const telemetry = new TelemetryBatch();
+        const trace = startTrace();
 
         const stream = createUIMessageStream<InBridgeUIMessage>({
             execute: async ({ writer }) => {
@@ -175,6 +177,7 @@ export async function POST(req: Request) {
                         }
                     }
 
+                    trace.mark('retrieved', retrieved.source);
                     const { citations, promptSources } = buildSources(retrieved.docs);
                     if (citations.length > 0) {
                         writer.write({
@@ -199,6 +202,7 @@ export async function POST(req: Request) {
                         { turns, system, signal },
                         {
                             telemetry,
+                            onStage: trace.mark,
                             firstTokenDeadline: firstTokenDeadline(
                                 routeStartedAt,
                                 maxDuration * 1000,
@@ -233,9 +237,11 @@ export async function POST(req: Request) {
                     writer.write({ type: 'data-followups', id: 'followups', data: followups });
 
                     writer.write({ type: 'finish' });
+                    trace.end('finished');
                 } catch (error) {
                     // Stop pressed or tab closed: nothing to report to anyone.
-                    if (signal.aborted) return;
+                    if (signal.aborted) { trace.end('aborted'); return; }
+                    trace.end(`error:${error instanceof Error ? error.name : 'unknown'}`);
                     throw error;
                 } finally {
                     await telemetry.flush();
