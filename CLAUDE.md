@@ -38,6 +38,8 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 — Voice input message
+- Voice input uses the browser's Web Speech API; Brave (and Firefox) don't support it, which surfaces as a `network` error. That message used to say "needs an internet connection"; it now says the speech service is unreachable/blocked and suggests Chrome, Edge or Safari (en/hi/hinglish in `ChatInput.tsx`). The `Permissions-Policy` header still allows `microphone=(self)`.
 ### 2026-11-06 — Provider diagnostics
 - **Add**: `GET /api/internal/providers` (header `X-Internal-Token` = `INTERNAL_API_TOKEN`, else 404): reports which LLM providers the *running* Vercel build has configured (booleans only, never keys), the failover `chain`, `ACTIVE_AI_PROVIDER`, model ids and the first-token cap. Use it to check whether a newly added key (e.g. `GOOGLE_GEMINI_API_KEY`) is actually live instead of waiting for a provider to fail. Test: `providers-route.test.ts`.
 - **Finding**: after a Gemini key was added and Vercel redeployed, a live burst still failed with no failover and no `gemini` metrics, i.e. Gemini was not in the chain of the running build.
