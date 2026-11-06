@@ -60,6 +60,23 @@ export function isRecencyQuery(query: string): boolean {
 }
 
 /**
+ * State abbreviations people type that the dataset spells out ("UP scholarship"
+ * matched Uttarakhand and unrelated schemes while "Uttar Pradesh scholarship"
+ * matched the right three). Only capitalised, standalone, unambiguous ones: "MP"
+ * (Madhya Pradesh or Member of Parliament) and "AP" are left alone.
+ */
+const STATE_ABBREVIATIONS: Array<[RegExp, string]> = [
+    [/\bU\.?P\.?(?=\W|$)/g, "Uttar Pradesh"],
+    [/\bTN\b/g, "Tamil Nadu"],
+    [/\bWB\b/g, "West Bengal"],
+];
+
+/** Spell out state abbreviations for retrieval. The user's own words are unchanged elsewhere. */
+export function expandStateAbbreviations(query: string): string {
+    return STATE_ABBREVIATIONS.reduce((q, [pattern, full]) => q.replace(pattern, full), query);
+}
+
+/**
  * The scheme's category line from a docstore entry.
  *
  * Category is not in the docstore metadata; the dataset builder wrote it into
@@ -220,8 +237,9 @@ export class RAGEngine {
      * Emits exactly one rag_cache event per call so that
      * inbridge_rag_cache_hits_total / (hits + misses) is a true hit rate.
      */
-    public async retrieveContext(query: string, options: RetrieveOptions = {}): Promise<RetrievedContext> {
+    public async retrieveContext(rawQuery: string, options: RetrieveOptions = {}): Promise<RetrievedContext> {
         const { telemetry, focus = "all" } = options;
+        const query = expandStateAbbreviations(rawQuery);
         const started = Date.now();
         const key = `${focus}|${queryCacheKey(query)}`;
 
