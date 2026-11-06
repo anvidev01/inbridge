@@ -2,6 +2,7 @@ import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { buildRetrievalQuery, latestUserText, parseChatRequest } from '@/lib/ai/chat-request';
 import { englishSearchQuery } from '@/lib/ai/translate';
 import { normalizeSearchQuery } from '@/lib/ai/search-query';
+import { normalizeHinglishQuery } from '@/lib/ai/hinglish';
 import { buildSources } from '@/lib/ai/citations';
 import { checkRateLimit, clientIp, type RateLimitResult } from '@/lib/ai/ratelimit';
 import {
@@ -153,11 +154,18 @@ export async function POST(req: Request) {
                             const english = await englishSearchQuery(latest, req.signal);
                             // Hindi typed in English letters is turned into English, and question
                             // framing ("What is", "How do I") is removed, so the search sees the subject.
-                            const searchQuery = normalizeSearchQuery(english ?? buildRetrievalQuery(turns));
+                            const baseQuery = english ?? buildRetrievalQuery(turns);
+                            const searchQuery = normalizeSearchQuery(baseQuery);
                             retrieved = await ragEngine.retrieveContext(searchQuery, {
                                 telemetry,
                                 focus,
                                 recencyText: english ?? latest,
+                                // What the user wants to know (steps, documents, eligibility...), read
+                                // from their own words: the cleaned query no longer contains them.
+                                // Decides between the dataset and a live search of the official sites.
+                                intentText: `${latest} ${english ?? ''}`,
+                                // Live search keeps "apply" etc., which the dataset query drops.
+                                liveQuery: normalizeHinglishQuery(baseQuery),
                                 onPhase: (phase) =>
                                     writer.write({ type: 'data-phase', data: { phase }, transient: true }),
                             });

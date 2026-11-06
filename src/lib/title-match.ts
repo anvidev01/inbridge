@@ -16,7 +16,7 @@ import { FILLER_WORDS, GENERIC_TOPICS } from './ai/chat-request';
 /** Words that appear in countless titles or say nothing about which scheme is meant. */
 const NON_DISTINCTIVE = new Set([
     'scheme', 'schemes', 'yojana', 'yojna', 'yojnaye', 'programme', 'program', 'service', 'services', 'government', 'govt', 'sarkari', 'india', 'indian',
-    'new', 'start', 'starting', 'help', 'helps', 'helping', 'free', 'get', 'getting', 'give', 'gives', 'person', 'people', 'family', 'families', 'support',
+    'new', 'id', 'start', 'starting', 'help', 'helps', 'helping', 'free', 'get', 'getting', 'give', 'gives', 'person', 'people', 'family', 'families', 'support',
 ]);
 
 /**

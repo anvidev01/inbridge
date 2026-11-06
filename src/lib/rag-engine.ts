@@ -8,6 +8,7 @@ import { log } from "./observability/logger";
 import { trackTavilyUsage, buildTavilyRecord } from "./observability/tavily-usage";
 import type { RAGSource, TelemetryBatch } from "./observability/telemetry";
 import type { LocalVectorStore, StoredDoc } from "./vector-search";
+import { detectIntents, planRetrieval } from "./retrieval-plan";
 
 // Re-exported: existing callers and tests import isGovUrl from here.
 export { isGovUrl };
@@ -116,6 +117,15 @@ export interface RetrieveOptions {
      * keep sending every follow-up to live search.
      */
     recencyText?: string;
+    /**
+     * The user's own wording, read for what they want to know ("how do I apply",
+     * "documents", "eligibility"). Defaults to the query, but search cleaning
+     * removes exactly those words. Decides whether the dataset can answer or the
+     * official sites must be searched (see retrieval-plan.ts).
+     */
+    intentText?: string;
+    /** Query for live search; keeps words like "apply" that the dataset query drops. Defaults to the query. */
+    liveQuery?: string;
     /** Called just before each search actually starts. Not called on a cache hit. */
     onPhase?: (phase: RetrievalPhase) => void;
 }
@@ -241,7 +251,10 @@ export class RAGEngine {
         const { telemetry, focus = "all" } = options;
         const query = expandStateAbbreviations(rawQuery);
         const started = Date.now();
-        const key = `${focus}|${queryCacheKey(query)}`;
+        // The same subject needs different sources depending on what is asked of it
+        // ("PAN card" is a lookup, "how do I apply for a PAN card" needs live steps).
+        const intents = detectIntents(options.intentText ?? rawQuery);
+        const key = `${focus}|${queryCacheKey(query)}|${[...intents].sort().join(",")}`;
 
         const cached = retrievalCache.get(key);
         if (cached) {
@@ -376,23 +389,58 @@ export class RAGEngine {
         const latest = options.recencyText ?? query;
         const recency = isRecencyQuery(latest) || hasDevanagari(latest);
         const now = () => new Date().toISOString();
+        const liveQuery = expandStateAbbreviations(options.liveQuery ?? query);
 
         if (recency) {
-            const live = await this.searchGovPortals(query, onPhase);
+            const live = await this.searchGovPortals(liveQuery, onPhase);
             if (live) return { docs: live, source: "tavily_search", retrievedAt: now() };
         }
 
         const dataset = await this.searchDataset(query, focus, onPhase);
-        if (dataset.length > 0) {
-            return { docs: dataset, source: "vector_store", retrievedAt: now() };
+        const intents = detectIntents(options.intentText ?? query);
+        const plan = planRetrieval(
+            query,
+            dataset.map((d) => ({ title: d.title, content: d.content })),
+            intents
+        );
+        const relevant = plan.relevant.map((i) => dataset[i]);
+        log.info("Retrieval plan", {
+            reason: plan.reason,
+            intents,
+            dataset_hits: dataset.length,
+            relevant: relevant.length,
+            live: plan.needsLive,
+        });
+
+        // The snapshot has what was asked: answer from it.
+        if (!plan.needsLive) {
+            return { docs: relevant, source: "vector_store", retrievedAt: now() };
         }
 
+        // Not in the snapshot (nothing about the subject, or no steps / documents /
+        // eligibility for it): search the official sites and answer from what they say.
         // Recency queries already tried live search above.
         if (!recency) {
-            const live = await this.searchGovPortals(query, onPhase);
-            if (live) return { docs: live, source: "tavily_search", retrievedAt: now() };
+            const live = await this.searchGovPortals(liveQuery, onPhase);
+            if (live) {
+                // The scheme's own entry goes first so the answer knows which scheme this is,
+                // then the live pages that actually hold the details.
+                const seen = new Set<string>();
+                const docs = [...relevant.slice(0, 2), ...live].filter((d) => {
+                    const key = d.url || d.title;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                return { docs, source: "tavily_search", retrievedAt: now() };
+            }
         }
 
+        // Live search found nothing (or is unavailable): the snapshot is all there is,
+        // but only entries that are about the question. Irrelevant ones would mislead.
+        if (relevant.length > 0) {
+            return { docs: relevant, source: "vector_store", retrievedAt: now() };
+        }
         return { docs: [], source: "llm_direct", retrievedAt: now() };
     }
 }
