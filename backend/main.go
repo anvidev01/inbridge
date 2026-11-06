@@ -174,6 +174,12 @@ func main() {
 			r.Use(middleware.AuthMiddleware(publicKey))
 
 			r.Get("/citizen/profile", handlers.GetCitizenProfile(dbPool))
+
+			// Chat history, so a signed-in citizen can continue a conversation anywhere.
+			r.Get("/chat/threads", handlers.ListThreads(dbPool))
+			r.Delete("/chat/threads", handlers.ClearThreads(dbPool))
+			r.Put("/chat/threads/{id}", handlers.PutThread(dbPool))
+			r.Delete("/chat/threads/{id}", handlers.DeleteThread(dbPool))
 			r.Put("/citizen/profile", handlers.UpdateCitizenProfile(dbPool))
 
 			r.With(
