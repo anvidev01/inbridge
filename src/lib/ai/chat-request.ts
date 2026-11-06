@@ -142,21 +142,72 @@ export function parseChatRequest(raw: unknown, filterUser?: UserTurnFilter): Cha
 /** Max characters of the retrieval query. The embedder truncates long input anyway. */
 const MAX_QUERY_CHARS = 600;
 
+/** Words that carry no subject: a question made only of these (and the generic words below) needs context. */
+export const FILLER_WORDS = new Set([
+    'a', 'an', 'the', 'to', 'of', 'for', 'in', 'on', 'at', 'by', 'with', 'from', 'and', 'or', 'but', 'is', 'are', 'was', 'be', 'do', 'does', 'did', 'i', 'me', 'my',
+    'we', 'you', 'what', 'which', 'where', 'when', 'how', 'who', 'whom', 'why', 'can', 'could', 'should', 'will', 'would', 'please', 'about', 'tell', 'give', 'know',
+    'also', 'any', 'there', 'then', 'now', 'much', 'many', 'long', 'get', 'got', 'have', 'has', 'need', 'needs', 'needed', 'required', 'require', 'want',
+    // Hinglish
+    'ke', 'ka', 'ki', 'ko', 'se', 'mein', 'me', 'par', 'aur', 'ya', 'bhi', 'hai', 'hain', 'ho', 'kya', 'kaise', 'kab', 'kahan', 'kaun', 'kitna', 'kitni',
+    'liye', 'chahiye', 'lagenge', 'lagega', 'lagegi', 'lagta', 'lagti', 'karein', 'kare', 'karna', 'kar', 'milega', 'milegi', 'batao', 'bataiye', 'mujhe', 'mera', 'meri',
+]);
+
+/** Everyday question topics that do not name a scheme: "documents?", "eligibility?", "last date?". */
+export const GENERIC_TOPICS = new Set([
+    'apply', 'application', 'applying', 'process', 'procedure', 'steps', 'step', 'documents', 'document', 'eligibility', 'eligible', 'benefits', 'benefit', 'amount',
+    'status', 'date', 'dates', 'deadline', 'fee', 'fees', 'cost', 'details', 'detail', 'online', 'offline', 'form', 'forms', 'link', 'portal', 'website', 'helpline',
+    'number', 'registration', 'register', 'renew', 'renewal', 'update', 'check', 'claim', 'payment', 'installment', 'time', 'last', 'first', 'next', 'more', 'else',
+    // Hinglish
+    'aavedan', 'avedan', 'apply', 'dastavez', 'dastawez', 'kagaz', 'patrata', 'labh', 'tareekh', 'tarikh', 'jankari', 'jaankari', 'paisa', 'paise',
+]);
+
+/** Words that point back at the previous message: "it", "this scheme", "iske liye". */
+const BACK_REFERENCES = new Set([
+    'it', 'its', 'this', 'that', 'these', 'those', 'same', 'above', 'previous', 'earlier', 'them', 'their',
+    'iske', 'uske', 'isme', 'usme', 'isko', 'usko', 'iska', 'uska', 'isse', 'usse', 'yeh', 'yah', 'woh', 'wo', 'ye',
+]);
+
+/** A back-reference only marks a follow-up in a short question; long ones name their own subject. */
+const MAX_FOLLOW_UP_WORDS = 8;
+
 /**
- * Retrieval query from the last 3 user turns, newest last.
+ * True when a question has no subject of its own and only makes sense after the
+ * previous one ("what documents do I need?", "where to apply?", "iske liye kya
+ * chahiye"). A question that names a scheme or service ("PAN card", "PM-KISAN
+ * eligibility") is self-contained, however short.
+ */
+export function isFollowUpQuestion(text: string): boolean {
+    const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    if (words.length === 0) return false;
+    if (words.length <= MAX_FOLLOW_UP_WORDS && words.some((w) => BACK_REFERENCES.has(w))) return true;
+    const content = words.filter((w) => !FILLER_WORDS.has(w));
+    return content.every((w) => GENERIC_TOPICS.has(w));
+}
+
+/**
+ * The text the scheme search runs on.
  *
- * A follow-up like "what documents do I need for it?" embeds to nothing
- * useful on its own; with the previous turn ("PM-KISAN eligibility") in front
- * of it the vector store finds the right scheme. When the combined text is too
- * long, the oldest turns are dropped first.
+ * A question that stands on its own is searched ALONE. Mixing in earlier turns
+ * hurts it: asking the same question twice doubled the text and PM-KISAN dropped
+ * out of the results, and a new topic after an unrelated one blended both.
+ *
+ * A genuine follow-up ("what documents do I need for it?") embeds to nothing
+ * useful alone, so the previous distinct user turns (up to maxUserTurns in all,
+ * newest last) go in front of it. When the combined text is too long the oldest
+ * turns are dropped first.
  */
 export function buildRetrievalQuery(turns: ChatTurn[], maxUserTurns = 3): string {
-    const userTexts = turns.filter((t) => t.role === 'user').slice(-maxUserTurns);
-    const kept: string[] = [];
-    let length = 0;
-    for (let i = userTexts.length - 1; i >= 0; i--) {
-        const text = userTexts[i].content.replace(/\s+/g, ' ').trim();
-        if (kept.length > 0 && length + text.length + 1 > MAX_QUERY_CHARS) break;
+    const users = turns.filter((t) => t.role === 'user').map((t) => t.content.replace(/\s+/g, ' ').trim());
+    const latest = users[users.length - 1];
+    if (latest === undefined) return '';
+    if (!isFollowUpQuestion(latest)) return latest.slice(-MAX_QUERY_CHARS);
+
+    const kept: string[] = [latest];
+    let length = latest.length;
+    for (let i = users.length - 2; i >= 0 && kept.length < maxUserTurns; i--) {
+        const text = users[i];
+        if (!text || kept.includes(text)) continue;
+        if (length + text.length + 1 > MAX_QUERY_CHARS) break;
         kept.unshift(text);
         length += text.length + 1;
     }

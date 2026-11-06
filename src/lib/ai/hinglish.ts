@@ -6,8 +6,9 @@
  * word "Yojna", which overlaps hundreds of scheme titles, so the dataset search
  * returned unrelated schemes (and "PM Kisan scheme apply" found PM-KISAN at
  * once). This turns such questions into a short English query: filler words are
- * dropped, common Hindi words are translated, and "Yojna"/"Yojana" becomes
- * "scheme".
+ * dropped, common Hindi words are translated, and "Yojna"/"Yojana" is dropped
+ * ("scheme" is as noisy a word as "Yojna": "PM Kisan scheme" missed PM-KISAN
+ * while "PM Kisan" and "PM Kisan apply" found it).
  *
  * It is deliberately rule-based: it runs for every Hinglish question, costs no
  * network call, and cannot time out or fail like an LLM translation. Only the
@@ -24,7 +25,10 @@ const MARKERS = new Set([
 
 /** Dropped: grammar and filler with no search value. */
 const STOPWORDS = new Set([
-    'ke', 'ka', 'ki', 'ko', 'se', 'mein', 'me', 'par', 'pe', 'aur', 'ya', 'bhi', 'to', 'toh', 'hi', 'ye', 'yeh', 'wo', 'woh', 'is', 'us', 'ek', 'koi',
+    'ke', 'ka', 'ki', 'ko', 'se', 'mein', 'me', 'par', 'pe', 'aur', 'ya', 'bhi', 'to', 'toh', 'hi', 'ye', 'yeh', 'yah', 'wo', 'woh', 'is', 'us', 'ek', 'koi',
+    // "Yojna/Yojana" is in hundreds of scheme titles, so it pulls in unrelated schemes: dropped, not translated.
+    'yojna', 'yojana', 'yojnaye', 'yojanayein', 'yojnayein', 'si', 'sa', 'se',
+    'iske', 'uske', 'isme', 'usme', 'isko', 'usko', 'iska', 'uska', 'isse', 'usse', 'lagenge', 'lagega', 'lagegi', 'lagta', 'lagti',
     'liye', 'lie', 'hai', 'hain', 'ho', 'hoga', 'hogi', 'tha', 'thi', 'the', 'kya', 'kaun', 'kab', 'kahan', 'kaha', 'kyu', 'kyun', 'kitna', 'kitni',
     'mujhe', 'mera', 'meri', 'mere', 'main', 'mai', 'hum', 'humein', 'hamara', 'aap', 'aapko', 'apna', 'apni',
     'karein', 'kare', 'karna', 'karni', 'karun', 'karu', 'kar', 'karo', 'karke', 'karwana', 'sakta', 'sakte', 'sakti', 'chahiye', 'chahie', 'chahta', 'chahti',
@@ -35,7 +39,6 @@ const STOPWORDS = new Set([
 /** Hindi words worth keeping, in English. */
 const GLOSSARY: Record<string, string> = {
     kaise: 'how', kaisey: 'how',
-    yojna: 'scheme', yojana: 'scheme', yojnaye: 'schemes', yojanayein: 'schemes', yojnayein: 'schemes',
     paisa: 'money', paise: 'money', rupaye: 'money', rupay: 'money',
     ghar: 'house', makaan: 'house', makan: 'house', banane: 'build',
     shiksha: 'education', padhai: 'education', vidyarthi: 'student', chhatra: 'student', chhatravritti: 'scholarship', chatravritti: 'scholarship',
@@ -46,7 +49,7 @@ const GLOSSARY: Record<string, string> = {
     beti: 'girl child', ladki: 'girl', mahila: 'women', mahilayen: 'women', garbhwati: 'pregnant', shaadi: 'marriage', vivah: 'marriage',
     aavedan: 'application', avedan: 'application', labh: 'benefit', patrata: 'eligibility', dastavez: 'documents', dastawez: 'documents', kagaz: 'documents', kagzat: 'documents',
     tareekh: 'date', tarikh: 'date', antim: 'last', sarkari: 'government', sarkar: 'government', byaj: 'interest', rin: 'loan', karz: 'loan',
-    gas: 'gas', bijli: 'electricity', pani: 'water', shauchalay: 'toilet',
+    madad: 'help', sahayata: 'assistance', sahaayata: 'assistance', gas: 'gas', bijli: 'electricity', pani: 'water', shauchalay: 'toilet',
 };
 
 const TOKEN = /[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu;

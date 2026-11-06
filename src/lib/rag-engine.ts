@@ -343,17 +343,18 @@ export class RAGEngine {
 
         try {
             const filter = focus === "all" ? undefined : (doc: StoredDoc) => matchesFocus(doc.pageContent, focus);
-            const results = await store.similaritySearchWithScore(query, VECTOR_TOP_K, filter);
-            const kept = results.filter(([, score]) => cosineFromFaissScore(score) >= this.SIMILARITY_THRESHOLD);
+            const results = await store.searchWithTitleBoost(query, VECTOR_TOP_K, filter);
+            // A title match is strong evidence on its own, so it skips the similarity threshold.
+            const kept = results.filter((r) => r.boosted || cosineFromFaissScore(r.score) >= this.SIMILARITY_THRESHOLD);
 
             if (kept.length === 0 && results.length > 0) {
                 log.debug("Vector store hit below similarity threshold", {
-                    similarity: Number(cosineFromFaissScore(results[0][1]).toFixed(3)),
+                    similarity: Number(cosineFromFaissScore(results[0].score).toFixed(3)),
                     threshold: this.SIMILARITY_THRESHOLD,
                 });
             }
 
-            return kept.map(([doc]) => ({
+            return kept.map(({ doc }) => ({
                 title: String(doc.metadata.title ?? ""),
                 url: String(doc.metadata.url ?? ""),
                 content: doc.pageContent,

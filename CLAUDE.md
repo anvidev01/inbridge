@@ -38,6 +38,16 @@ Reference for future work. Add a new entry at the top of the Change Log for ever
 - Optional env: `GROQ_MODEL`, `LLM_FIRST_TOKEN_TIMEOUT_MS` (10000), `CHAT_MAX_TOKENS` (1500), `NEXT_PUBLIC_AUTH_ENABLED`.
 
 ## Change Log
+### 2026-11-06 - Same question, different answer by language / in an existing thread
+- **Symptom**: PM Kisan steps appeared with English selected, but with Hinglish selected (same thread) the sources were unrelated and the answer said it could not find PM-KISAN.
+- **Real cause (not the language)**: `buildRetrievalQuery` joined the last 3 user messages. Asking the same question again doubled the text and PM-KISAN dropped out of the top 3; a new topic after an unrelated question blended both topics.
+- **Fixes** (all measured on the real dataset; right scheme in top 3):
+  - `chat-request.ts`: a self-contained question is searched ALONE; only a genuine follow-up (`isFollowUpQuestion`: no subject of its own, or "it/this/iske") gets earlier turns, de-duplicated.
+  - `ai/hinglish.ts`: Hinglish cleanup now DROPS "Yojna/Yojana" (translating it to "scheme" was as noisy: "PM Kisan scheme" missed, "PM Kisan" hit) and Hindi pointer words ("iske"). Hinglish 3/14 -> 13/14.
+  - `ai/search-query.ts` (`normalizeSearchQuery`, used by `api/chat/route.ts`): also strips English question framing ("What is", "How do I", "Tell me about", "What documents are needed for"). English 9/14 -> 13/14 ("What is PM-KISAN?" used to miss).
+  - `title-match.ts` + `LocalVectorStore.searchWithTitleBoost`: schemes whose title contains every distinctive word of the question are promoted (the embedding model is weak at exact names: "Ayushman Bharat" never returned its own scheme). Skipped when >6 titles match (too broad, e.g. "pension"); soft words like "card" are dropped on a second pass. Title hits skip the similarity threshold.
+- **Still a gap**: Sukanya Samriddhi is not in the dataset (4,740 schemes); the dataset search returns something above the threshold so live search never runs. Idea: run live search when the top hit shares no title words with the question.
+- `VECTOR_TOP_K` (3) was tested at 5 and 6: no gain once queries are cleaned, so unchanged.
 ### 2026-11-06 - Hinglish questions found the wrong schemes
 - **Symptom**: "PM Kisan Yojna Ke liye kaise apply karein" returned unrelated schemes (Jharkhand skill centre, Haryana housing...) and the model said it could not find PM-KISAN's steps.
 - **Cause**: retrieval embeds with an English-only model. Hindi typed in Latin letters was not translated (the LLM translation only runs for Devanagari), and the word "Yojna" overlaps hundreds of scheme titles: `PM Kisan Yojna apply` matched random "Yojna" schemes while `PM Kisan scheme apply` found PM-KISAN.

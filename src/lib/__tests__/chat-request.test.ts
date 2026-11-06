@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRetrievalQuery, latestUserText, MAX_HISTORY_TURNS, normaliseHistory, parseChatRequest } from '../ai/chat-request';
+import { buildRetrievalQuery, isFollowUpQuestion, latestUserText, MAX_HISTORY_TURNS, normaliseHistory, parseChatRequest } from '../ai/chat-request';
 
 const user = (text: string) => ({ role: 'user', parts: [{ type: 'text', text }] });
 const assistant = (text: string) => ({ role: 'assistant', parts: [{ type: 'text', text }] });
@@ -116,5 +116,86 @@ describe('buildRetrievalQuery', () => {
             { role: 'user', content: 'latest question' },
         ]);
         assert.equal(q, 'latest question');
+    });
+});
+
+describe('isFollowUpQuestion', () => {
+    test('questions with no subject of their own need context', () => {
+        for (const q of [
+            'where to apply?',
+            'and which documents?',
+            'What documents do I need for it?',
+            'What is the last date?',
+            'Is it available online?',
+            'iske liye kya chahiye',
+            'documents kya lagenge',
+            'eligibility?',
+        ]) {
+            assert.equal(isFollowUpQuestion(q), true, q);
+        }
+    });
+
+    test('questions that name a scheme or service stand on their own, however short', () => {
+        for (const q of [
+            'PAN card',
+            'PM-KISAN eligibility',
+            'What is PM-KISAN?',
+            'How do I apply for PM-Kisan?',
+            'PM Kisan Yojna Ke liye kaise apply karein',
+            'Ayushman Bharat card kaise banwaye',
+            'How do I update the address on my Aadhaar card online?',
+            'Which scheme gives free gas connection that I can apply for if I am below poverty line?',
+        ]) {
+            assert.equal(isFollowUpQuestion(q), false, q);
+        }
+    });
+});
+
+describe('buildRetrievalQuery: self-contained questions are searched alone', () => {
+    const Q = 'PM Kisan Yojna Ke liye kaise apply karein';
+
+    test('the same question asked again is not doubled', () => {
+        const q = buildRetrievalQuery([
+            { role: 'user', content: Q },
+            { role: 'assistant', content: 'answer' },
+            { role: 'user', content: Q },
+        ]);
+        assert.equal(q, Q);
+    });
+
+    test('a new topic after an unrelated question is not blended with it', () => {
+        const q = buildRetrievalQuery([
+            { role: 'user', content: 'How do I update the address on my Aadhaar card online?' },
+            { role: 'assistant', content: 'x' },
+            { role: 'user', content: Q },
+        ]);
+        assert.equal(q, Q);
+    });
+
+    test('a follow-up gets the previous question in front of it', () => {
+        const q = buildRetrievalQuery([
+            { role: 'user', content: 'PM-KISAN eligibility' },
+            { role: 'assistant', content: 'x' },
+            { role: 'user', content: 'What documents do I need for it?' },
+        ]);
+        assert.equal(q, 'PM-KISAN eligibility\nWhat documents do I need for it?');
+    });
+
+    test('follow-up context skips repeats of the follow-up itself and of each other', () => {
+        const q = buildRetrievalQuery([
+            { role: 'user', content: 'PM-KISAN eligibility' },
+            { role: 'assistant', content: 'x' },
+            { role: 'user', content: 'PM-KISAN eligibility' },
+            { role: 'assistant', content: 'x' },
+            { role: 'user', content: 'where to apply?' },
+            { role: 'assistant', content: 'x' },
+            { role: 'user', content: 'where to apply?' },
+        ]);
+        assert.equal(q, 'PM-KISAN eligibility\nwhere to apply?');
+    });
+
+    test('a lone message, and an empty thread', () => {
+        assert.equal(buildRetrievalQuery([{ role: 'user', content: 'where to apply?' }]), 'where to apply?');
+        assert.equal(buildRetrievalQuery([]), '');
     });
 });

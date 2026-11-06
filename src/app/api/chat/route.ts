@@ -1,7 +1,7 @@
 import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { buildRetrievalQuery, latestUserText, parseChatRequest } from '@/lib/ai/chat-request';
 import { englishSearchQuery } from '@/lib/ai/translate';
-import { normalizeHinglishQuery } from '@/lib/ai/hinglish';
+import { normalizeSearchQuery } from '@/lib/ai/search-query';
 import { buildSources } from '@/lib/ai/citations';
 import { checkRateLimit, clientIp, type RateLimitResult } from '@/lib/ai/ratelimit';
 import {
@@ -151,9 +151,9 @@ export async function POST(req: Request) {
                             // and its embeddings are English); the answer stays in Hindi.
                             const latest = turns[turns.length - 1].content;
                             const english = await englishSearchQuery(latest, req.signal);
-                            // Hindi typed in English letters (Hinglish) is cleaned into an
-                            // English query too; unchanged for anything else.
-                            const searchQuery = normalizeHinglishQuery(english ?? buildRetrievalQuery(turns));
+                            // Hindi typed in English letters is turned into English, and question
+                            // framing ("What is", "How do I") is removed, so the search sees the subject.
+                            const searchQuery = normalizeSearchQuery(english ?? buildRetrievalQuery(turns));
                             retrieved = await ragEngine.retrieveContext(searchQuery, {
                                 telemetry,
                                 focus,

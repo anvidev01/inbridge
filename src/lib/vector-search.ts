@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { distinctiveTokens, isSpecificEnough, MAX_TITLE_CANDIDATES, relaxedTokens, titleSatisfies, tokenizeTitle } from "./title-match";
 
 /**
  * Pure-JS replacement for FaissStore.load + similaritySearchWithScore.
@@ -90,12 +91,23 @@ type Extractor = (text: string, options: { pooling: "mean"; normalize: boolean }
 
 const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 
+/** A search hit. `boosted` hits matched the question by title (see title-match.ts) and skip the similarity threshold. */
+export interface SearchHit {
+    doc: StoredDoc;
+    score: number;
+    boosted: boolean;
+}
+
 export class LocalVectorStore {
+    private titleTokens: Array<Set<string>>;
+
     private constructor(
         private index: FlatIndex,
         private docs: StoredDoc[],
         private extractor: Extractor
-    ) {}
+    ) {
+        this.titleTokens = docs.map((d) => new Set(tokenizeTitle(String(d.metadata?.title ?? ""))));
+    }
 
     /** Loads vector_store/{faiss.index,docstore.json} and the embedding model. */
     static async load(dir: string): Promise<LocalVectorStore> {
@@ -132,6 +144,46 @@ export class LocalVectorStore {
         const output = await this.extractor(query, { pooling: "mean", normalize: true });
         const include = filter ? (i: number) => filter(this.docs[i]) : undefined;
         return searchFlatL2(this.index, output.data, k, include).map(([i, score]) => [this.docs[i], score]);
+    }
+
+    /**
+     * Meaning search plus a title match, with one embedding of the query.
+     *
+     * Schemes whose title contains every distinctive word of the question come
+     * first (best meaning match among them first), then the nearest by meaning,
+     * `k` in all. Skipped when the question is too broad to name a scheme (more
+     * than MAX_TITLE_CANDIDATES titles match, e.g. just "pension").
+     */
+    async searchWithTitleBoost(query: string, k: number, filter?: (doc: StoredDoc) => boolean): Promise<SearchHit[]> {
+        const output = await this.extractor(query, { pooling: "mean", normalize: true });
+        const include = filter ? (i: number) => filter(this.docs[i]) : undefined;
+        const semantic = searchFlatL2(this.index, output.data, k, include);
+
+        let boosted: Array<[number, number]> = [];
+        const tokens = distinctiveTokens(query);
+        const findCandidates = (wanted: string[]): Set<number> => {
+            const found = new Set<number>();
+            if (!isSpecificEnough(wanted)) return found;
+            for (let i = 0; i < this.docs.length; i++) {
+                if (include && !include(i)) continue;
+                if (titleSatisfies(this.titleTokens[i], wanted)) found.add(i);
+            }
+            return found;
+        };
+        // Strict first (every distinctive word in the title), then without category
+        // words such as "card" that a title may not repeat.
+        let candidates = findCandidates(tokens);
+        if (candidates.size === 0) candidates = findCandidates(relaxedTokens(tokens));
+        if (candidates.size > 0 && candidates.size <= MAX_TITLE_CANDIDATES) {
+            boosted = searchFlatL2(this.index, output.data, Math.min(2, candidates.size), (i) => candidates.has(i));
+        }
+
+        const boostedIds = new Set(boosted.map(([i]) => i));
+        const merged: Array<[number, number, boolean]> = [
+            ...boosted.map(([i, score]): [number, number, boolean] => [i, score, true]),
+            ...semantic.filter(([i]) => !boostedIds.has(i)).map(([i, score]): [number, number, boolean] => [i, score, false]),
+        ].slice(0, k);
+        return merged.map(([i, score, isBoosted]) => ({ doc: this.docs[i], score, boosted: isBoosted }));
     }
 }
 

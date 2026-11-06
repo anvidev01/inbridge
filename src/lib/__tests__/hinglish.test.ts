@@ -33,7 +33,8 @@ describe('looksHinglish', () => {
 
 describe('normalizeHinglishQuery', () => {
     const cases: Array<[string, string]> = [
-        ['PM Kisan Yojna Ke liye kaise apply karein', 'PM Kisan scheme apply'],
+        ['PM Kisan Yojna Ke liye kaise apply karein', 'PM Kisan apply'],
+        ['PM Awas Yojana ke liye eligibility kya hai', 'PM Awas eligibility'],
         ['mujhe ghar banane ke liye paisa chahiye', 'house build money'],
         ['vidhwa pension kaise milegi', 'widow pension'],
         ['Mudra loan kaise milega', 'Mudra loan'],
@@ -61,5 +62,12 @@ describe('normalizeHinglishQuery', () => {
         for (const q of ['', '   ', 'karein', 'ke liye']) {
             assert.ok(normalizeHinglishQuery(q).length > 0 || q.trim() === '');
         }
+    });
+});
+
+describe('Hinglish follow-ups', () => {
+    test('pointer words such as "iske" are dropped from the search query', () => {
+        assert.equal(normalizeHinglishQuery('PM Kisan Yojana kya hai\niske liye documents kya chahiye'), 'PM Kisan documents');
+        assert.equal(normalizeHinglishQuery('documents kya lagenge'), 'documents kya lagenge'); // one word left: keep the original
     });
 });
