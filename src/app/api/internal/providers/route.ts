@@ -99,7 +99,7 @@ const MODEL_ID = /^[A-Za-z0-9._-]{1,64}$/;
  * that spend the output budget on reasoning (short or empty answers) show up here
  * rather than in front of a user.
  */
-async function testGeminiModels(models: string[]): Promise<StreamTest[]> {
+async function testGeminiModels(models: string[], question = 'How do I apply for PM-Kisan?', reply = ''): Promise<StreamTest[]> {
     const results: StreamTest[] = [];
     for (const model of models.filter((m) => MODEL_ID.test(m)).slice(0, 4)) {
         const started = Date.now();
@@ -107,8 +107,8 @@ async function testGeminiModels(models: string[]): Promise<StreamTest[]> {
         try {
             let text = '';
             const stream = streamGeminiWith(model, {
-                system: 'You are InBridge, a guide to Indian government schemes. Answer in 3 short numbered steps, then one sentence on documents needed.',
-                turns: [{ role: 'user', content: 'How do I apply for PM-Kisan?' }],
+                system: `You are InBridge, a guide to Indian government schemes. Answer in 3 short numbered steps, then one sentence on documents needed.${reply ? ` ${reply}` : ''}`,
+                turns: [{ role: 'user', content: question }],
                 signal: AbortSignal.timeout(20_000),
             });
             for await (const chunk of stream) {
@@ -168,11 +168,14 @@ export async function GET(req: Request): Promise<Response> {
 
     const configured = Object.fromEntries(PREFERENCE_ORDER.map((p) => [p, isConfigured(p)]));
     const wantProbe = new URL(req.url).searchParams.get('probe') === '1';
-    const candidates = (new URL(req.url).searchParams.get('gemini_models') ?? '').split(',').filter(Boolean);
+    const params = new URL(req.url).searchParams;
+    const candidates = (params.get('gemini_models') ?? '').split(',').filter(Boolean);
+    const question = (params.get('q') ?? '').slice(0, 200) || undefined;
+    const reply = params.get('reply') === 'hi' ? 'Write your entire reply in Hindi, in Devanagari script.' : params.get('reply') === 'hinglish' ? 'Write your entire reply in Hinglish: Hindi written in Latin script.' : '';
     const probes = wantProbe
         ? {
               ...(isConfigured('gemini')
-                  ? { gemini: { ...(await probeGemini()), ...(candidates.length ? { streamTests: await testGeminiModels(candidates) } : {}) } }
+                  ? { gemini: { ...(await probeGemini()), ...(candidates.length ? { streamTests: await testGeminiModels(candidates, question, reply) } : {}) } }
                   : {}),
               ...(isConfigured('groq') ? { groq: await probeGroq() } : {}),
           }
