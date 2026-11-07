@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 import { autoAssign, fillForm, readForm } from '../forms/pdf';
 import { usableProfile, withDerived } from '../forms/profile';
-import { cleanLabels, parseMapping } from '../../app/api/forms/map/route';
+import { cleanLabels } from '../../app/api/forms/explain/route';
 
 /** A small fillable form like the ones on government sites. */
 async function sampleForm(): Promise<ArrayBuffer> {
@@ -102,19 +102,12 @@ describe('filling a real fillable PDF', () => {
     });
 });
 
-describe('the label-mapping route accepts labels only', () => {
-    test('rejects non-strings, empty, oversized and too many labels', () => {
-        assert.equal(cleanLabels(undefined), null);
-        assert.equal(cleanLabels([]), null);
+describe('the explain route accepts labels only', () => {
+    test('rejects non-strings and oversized label lists', () => {
+        assert.deepEqual(cleanLabels(undefined), []);
         assert.equal(cleanLabels([1]), null);
         assert.equal(cleanLabels(['x'.repeat(121)]), null);
         assert.equal(cleanLabels(Array.from({ length: 61 }, (_, i) => `f${i}`)), null);
         assert.deepEqual(cleanLabels([' Name ', 'Name', 'Age']), ['Name', 'Age']);
-    });
-
-    test('only known keys survive from the model reply', () => {
-        const raw = '<think>hm</think>```json\n{"Office use": null, "Ward": "district", "Hack": "password", "Name": "full_name"}\n```';
-        assert.deepEqual(parseMapping(raw, ['Office use', 'Ward', 'Hack']), { 'Office use': null, Ward: 'district', Hack: null });
-        assert.deepEqual(parseMapping('nonsense', ['A']), { A: null });
     });
 });

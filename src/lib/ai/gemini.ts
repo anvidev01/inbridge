@@ -110,7 +110,7 @@ export function streamGemini(input: ProviderInput): AsyncGenerator<string> {
 }
 
 /** Same, with an explicit model (used to test candidate models). */
-export async function* streamGeminiWith(modelName: string, { turns, system, signal }: ProviderInput): AsyncGenerator<string> {
+export async function* streamGeminiWith(modelName: string, { turns, system, signal, maxTokens }: ProviderInput): AsyncGenerator<string> {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
     if (!apiKey) {
         throw new Error('Google Gemini API Key is missing. Please set GOOGLE_GEMINI_API_KEY in your environment.');
@@ -124,7 +124,7 @@ export async function* streamGeminiWith(modelName: string, { turns, system, sign
             systemInstruction: { parts: [{ text: system }] },
             // Gemini calls the assistant role "model".
             contents: turns.map((t) => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.content }] })),
-            generationConfig: { maxOutputTokens: maxOutputTokens(), temperature: TEMPERATURE },
+            generationConfig: { maxOutputTokens: maxTokens ?? maxOutputTokens(), temperature: TEMPERATURE },
         }),
         signal,
     });

@@ -150,13 +150,23 @@ export default function PrivacyPage() {
 
             <InfoSection id="form-filling" title="Filling a form (/forms)">
                 <p>
-                    The form filler works inside your browser tab. The PDF you choose and the details you type are never
-                    uploaded, stored or sent to an AI, and closing or refreshing the page forgets them. The only thing
-                    that can leave your device is the list of field names printed on the blank form (for example
-                    &ldquo;Applicant Name&rdquo;), and only for fields the page could not place itself. Those names go to
-                    our server and to the AI provider (Groq) so the field can be matched; they are not stored or logged.
-                    Aadhaar, PAN, bank, mobile and email fields are left empty unless you switch them on, and
-                    declarations are never ticked for you. InBridge does not submit forms.
+                    The form filler works inside your browser tab. The form you choose and the details you type are never
+                    uploaded or stored, and closing or refreshing the page forgets them. Scans and photos are read by a
+                    text reader that runs in your browser (its program and Hindi/English language data are downloaded from
+                    a public CDN the first time, and that request contains nothing from your form).
+                </p>
+                <p>
+                    To explain the form in simple words, the <strong>printed text of the blank form</strong> is sent to our
+                    server and then to an AI provider (Google Gemini or Groq, whichever is available), after you press
+                    &ldquo;Explain this form&rdquo;. Aadhaar, PAN and phone numbers in that text are hidden first, in your
+                    browser and again on our server. The text is not stored or logged by InBridge. Free-tier AI services may
+                    keep or review what they receive, so please upload a <strong>blank</strong> form: if a form already has
+                    your name or address written on it, that text would be sent too. Your own details (the ones you type in
+                    step 3) are never sent.
+                </p>
+                <p>
+                    Aadhaar, PAN, bank, mobile and email fields are left empty unless you switch them on, and declarations
+                    are never ticked for you. InBridge does not submit forms.
                 </p>
             </InfoSection>
 

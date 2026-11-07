@@ -39,6 +39,8 @@ export interface FillResult {
     bytes: Uint8Array;
     /** field name -> what was written (for the review table). */
     filled: Record<string, string>;
+    /** Fields that had a value but could not take it (for example Hindi text in a Latin-only form font). */
+    skipped: string[];
 }
 
 /** `assignment` maps a field name to a profile key; only keys present in `profile` are written. */
@@ -51,6 +53,7 @@ export async function fillForm(
     const doc = await PDFDocument.load(bytes, { updateMetadata: false });
     const form = doc.getForm();
     const filled: Record<string, string> = {};
+    const skipped: string[] = [];
 
     for (const field of form.getFields()) {
         const name = field.getName();
@@ -72,10 +75,11 @@ export async function fillForm(
             }
             // Check boxes are never ticked automatically: declarations are the person's to make.
         } catch {
-            /* a field that refuses the value is left empty */
+            // A field that refuses the value (e.g. Devanagari in a standard font) is left empty and reported.
+            skipped.push(name);
         }
     }
-    return { bytes: await doc.save(), filled };
+    return { bytes: await doc.save(), filled, skipped };
 }
 
 /** Rule-based match of every field; the labels it could not place are returned separately. */

@@ -37,7 +37,7 @@ export function groqReasoningOptions(
  * Reads fullStream, not textStream: textStream silently drops error parts, so
  * a retired model id or a 429 used to produce an empty answer and no failover.
  */
-export async function* streamGroq({ turns, system, signal }: ProviderInput): AsyncGenerator<string> {
+export async function* streamGroq({ turns, system, signal, maxTokens }: ProviderInput): AsyncGenerator<string> {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
         throw new Error('Groq API Key is missing. Please set GROQ_API_KEY in your environment.');
@@ -56,7 +56,7 @@ export async function* streamGroq({ turns, system, signal }: ProviderInput): Asy
         system,
         messages: turns,
         temperature: TEMPERATURE,
-        maxOutputTokens: maxOutputTokens(),
+        maxOutputTokens: maxTokens ?? maxOutputTokens(),
         abortSignal: signal,
         // Errors are rethrown from the loop below; the default handler would
         // only log them.

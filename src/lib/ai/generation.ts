@@ -12,6 +12,8 @@ export interface ProviderInput {
     turns: ChatTurn[];
     system: string;
     signal?: AbortSignal;
+    /** Overrides the default answer length (the form explainer returns longer JSON). */
+    maxTokens?: number;
 }
 
 export type ProviderStream = (input: ProviderInput) => AsyncIterable<string>;
