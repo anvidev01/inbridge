@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import {
     Baby, BookOpen, Briefcase, GraduationCap, HeartPulse, House, LogOut, MessageSquareWarning,
-    SquarePen, Sprout, UserRound, Users, X, type LucideIcon,
+    FileText, SquarePen, Sprout, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react';
 import { ThreadList } from './ThreadList';
 import { Logo } from '@/components/site/Logo';
@@ -33,6 +33,7 @@ interface SidebarCopy {
     newThread: string;
     browse: string;
     complaint: string;
+    fillForm: string;
     startWith: string;
     /** Task / life-event starters. Each fills the composer; nothing is sent until the user presses Send. */
     starters: Record<StarterKey, { label: string; query: string }>;
@@ -49,6 +50,7 @@ export const SIDEBAR_COPY: Record<Language, SidebarCopy> = {
         newThread: 'New thread',
         browse: 'Browse schemes',
         complaint: 'Draft a complaint',
+        fillForm: 'Fill a form',
         startWith: 'Start with',
         starters: {
             farmers: { label: 'Support for farmers', query: 'What central government support is available for small and marginal farmers, and how do I apply?' },
@@ -71,6 +73,7 @@ export const SIDEBAR_COPY: Record<Language, SidebarCopy> = {
         newThread: 'नई बातचीत',
         browse: 'योजनाएँ देखें',
         complaint: 'शिकायत लिखें',
+        fillForm: 'फॉर्म भरें',
         startWith: 'यहाँ से शुरू करें',
         starters: {
             farmers: { label: 'किसानों के लिए मदद', query: 'छोटे और सीमांत किसानों के लिए केंद्र सरकार की कौन-सी मदद मिलती है, और आवेदन कैसे करें?' },
@@ -93,6 +96,7 @@ export const SIDEBAR_COPY: Record<Language, SidebarCopy> = {
         newThread: 'Naya thread',
         browse: 'Schemes dekhein',
         complaint: 'Complaint likhein',
+        fillForm: 'Form bharein',
         startWith: 'Yahan se shuru karein',
         starters: {
             farmers: { label: 'Kisaanon ke liye madad', query: 'Chhote aur marginal kisaanon ke liye central government ki kya madad milti hai, aur apply kaise karein?' },
@@ -223,6 +227,12 @@ export function Sidebar({
                                 <Link href="/services" className={`${row} text-fg hover:bg-surface-2`}>
                                     <BookOpen className="w-4 h-4 text-muted shrink-0" aria-hidden="true" />
                                     {copy.browse}
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/forms" className={`${row} text-fg hover:bg-surface-2`}>
+                                    <FileText className="w-4 h-4 text-muted shrink-0" aria-hidden="true" />
+                                    {copy.fillForm}
                                 </Link>
                             </li>
                             <li>
