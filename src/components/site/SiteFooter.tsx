@@ -15,6 +15,7 @@ export const REPO_URL = 'https://github.com/anvidev01/inbridge';
 const MAIN_LINKS = [
     { href: '/chat', label: 'Chat' },
     { href: '/services', label: 'Browse schemes' },
+    { href: '/forms', label: 'Fill a form' },
     { href: '/about', label: 'About' },
 ];
 

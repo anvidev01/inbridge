@@ -148,6 +148,18 @@ export default function PrivacyPage() {
                 </p>
             </InfoSection>
 
+            <InfoSection id="form-filling" title="Filling a form (/forms)">
+                <p>
+                    The form filler works inside your browser tab. The PDF you choose and the details you type are never
+                    uploaded, stored or sent to an AI, and closing or refreshing the page forgets them. The only thing
+                    that can leave your device is the list of field names printed on the blank form (for example
+                    &ldquo;Applicant Name&rdquo;), and only for fields the page could not place itself. Those names go to
+                    our server and to the AI provider (Groq) so the field can be matched; they are not stored or logged.
+                    Aadhaar, PAN, bank, mobile and email fields are left empty unless you switch them on, and
+                    declarations are never ticked for you. InBridge does not submit forms.
+                </p>
+            </InfoSection>
+
             <InfoSection id="processors" title="Who processes your data">
                 <p>These companies process data for us to run the service. Some may process it outside India.</p>
                 <ul>

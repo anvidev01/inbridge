@@ -8,11 +8,12 @@ import Link from 'next/link';
 import { Logo } from '@/components/site/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
-type NavKey = 'chat' | 'services' | 'about';
+type NavKey = 'chat' | 'services' | 'forms' | 'about';
 
 const NAV: { key: NavKey; href: string; label: string; short: string }[] = [
     { key: 'chat', href: '/chat', label: 'Chat', short: 'Chat' },
     { key: 'services', href: '/services', label: 'Browse schemes', short: 'Schemes' },
+    { key: 'forms', href: '/forms', label: 'Fill a form', short: 'Forms' },
     { key: 'about', href: '/about', label: 'About', short: 'About' },
 ];
 
