@@ -4,7 +4,8 @@
  */
 import type { Chip } from './export';
 import type { ExplainItem } from './explain';
-import { baseFontSize, labelScore, locateLabels, MIN_LABEL_SCORE, placeAnswer, type Line, type Word } from './layout';
+import type { Language } from '../chat/protocol';
+import { baseFontSize, FIELD_NUMBER, isBlankish, labelScore, locateLabels, MIN_LABEL_SCORE, placeAnswer, type Line, type Word } from './layout';
 import { formatDate, matchField, pickOption, type Profile } from './profile';
 
 /** What to write for an item: a shared detail (name, date of birth...) or its own typed answer. */
@@ -109,4 +110,37 @@ export function matchFieldsToItems(fieldNames: string[], items: ExplainItem[]): 
         taken.add(p.item);
     }
     return out;
+}
+
+const OWN_NAME_MEANING: Record<Language, string> = { en: 'Your full name', hi: 'आपका पूरा नाम', hinglish: 'Aapka poora naam' };
+
+/** The printed label at the start of a line: after its number, up to the colon or the blank. */
+function labelPart(line: Line): string {
+    const words: string[] = [];
+    for (const w of line.words) {
+        if (words.length === 0 && FIELD_NUMBER.test(w.text)) continue;
+        if (isBlankish(w) || /[:：]$/.test(w.text)) { if (/[:：]$/.test(w.text) && w.text.length > 1) words.push(w.text.replace(/[:：]+$/, '')); break; }
+        words.push(w.text);
+        if (words.length >= 6) break;
+    }
+    return words.join(' ');
+}
+
+/**
+ * The AI occasionally leaves out the blank for the applicant's own name when its label was
+ * damaged by OCR. A form that never asks for your name is the worst miss, so if no item is the
+ * applicant's name but a line no item has claimed reads like one, that blank is added.
+ */
+export function ensureNameItem(items: ExplainItem[], lines: Line[], language: Language): ExplainItem[] {
+    if (items.some((it) => it.key === 'full_name' || it.key === 'first_name')) return items;
+    const hits = locateLabels(items.map((it) => it.label), lines);
+    const claimed = new Set(hits.filter((h): h is NonNullable<typeof h> => !!h).map((h) => h.line));
+    for (let i = 0; i < lines.length; i++) {
+        if (claimed.has(i)) continue;
+        const label = labelPart(lines[i]);
+        if (label && matchField(label) === 'full_name') {
+            return [{ label, meaning: OWN_NAME_MEANING[language], key: 'full_name', kind: 'text' }, ...items];
+        }
+    }
+    return items;
 }

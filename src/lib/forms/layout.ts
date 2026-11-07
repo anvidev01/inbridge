@@ -102,7 +102,7 @@ export interface LabelHit {
 const CANDIDATES_PER_LABEL = 8;
 
 /** "7." or "8)": the number that starts the next field on the same line. */
-const FIELD_NUMBER = /^\(?\d{1,2}[.)]$/;
+export const FIELD_NUMBER = /^\(?\d{1,2}[.)]$/;
 
 /**
  * Finds where each label is printed. Every label is matched against every short run of
@@ -168,7 +168,7 @@ export function baseFontSize(lines: Line[]): number {
 }
 
 /** Dots, underscores, colons, box edges and what OCR makes of them: the blank to write on. */
-function isBlankish(word: Word): boolean {
+export function isBlankish(word: Word): boolean {
     const t = word.text.trim();
     if (!t) return true;
     if (/[.…_\-–—]{4,}/u.test(t)) return true;

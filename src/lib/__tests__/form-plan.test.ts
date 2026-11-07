@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchFieldsToItems, planOverlay, valueFor } from '../forms/plan';
+import { ensureNameItem, matchFieldsToItems, planOverlay, valueFor } from '../forms/plan';
 import type { ExplainItem } from '../forms/explain';
 import type { Line, Word } from '../forms/layout';
 
@@ -87,5 +87,32 @@ describe('valueFor and field matching', () => {
         const m = matchFieldsToItems(['Ward Number', 'Plot Number'], items);
         assert.equal(m.get('Ward Number'), 0);
         assert.equal(m.get('Plot Number'), 1);
+    });
+});
+
+describe('ensureNameItem', () => {
+    const wide = (l: Line, text: string): Line => ({ ...l, words: [...l.words, { text, x: l.x + l.w + 10, y: l.y, w: 230, h: 20 }] });
+    const lines = [
+        line('विधवा पेंशन हेतु आवेदन पत्र', 30),
+        wide(line('1. STAGE का नाम', 100), 'covers'),
+        line('2. पिता / पति का नाम : ..........', 140),
+        line('3. जन्म तिथि : ..........', 180),
+    ];
+    const others = [item('पिता / पति का नाम', 'father_name'), item('जन्म तिथि', 'dob')];
+
+    test('adds the applicant name when the AI dropped it and an unclaimed line reads like one', () => {
+        const out = ensureNameItem(others, lines, 'hi');
+        assert.equal(out.length, 3);
+        assert.equal(out[0].key, 'full_name');
+        assert.equal(out[0].label, 'STAGE का नाम');
+        assert.equal(out[0].meaning, 'आपका पूरा नाम');
+    });
+    test('does nothing when a name item is already there, or no line reads like a name', () => {
+        const withName = [item('नाम', 'full_name'), ...others];
+        assert.equal(ensureNameItem(withName, lines, 'hi'), withName);
+        assert.equal(ensureNameItem(others, [lines[0], lines[2], lines[3]], 'hi'), others);
+    });
+    test("a father's name line is never taken for the applicant's name", () => {
+        assert.equal(ensureNameItem([item('जन्म तिथि', 'dob')], [lines[2], lines[3]], 'hi').length, 1);
     });
 });

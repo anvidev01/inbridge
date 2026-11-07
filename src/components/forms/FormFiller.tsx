@@ -14,7 +14,7 @@ import { canvasesToPdf, canvasToBlob, drawChips, INK, renderPdfPages, saveBlob, 
 import { prepareFormText, type Explanation, type ExplainItem } from '@/lib/forms/explain';
 import { loadForm, UnreadableFormError, type LoadedForm } from '@/lib/forms/read';
 import { fillForm, type FormField } from '@/lib/forms/pdf';
-import { matchFieldsToItems, planOverlay, valueFor } from '@/lib/forms/plan';
+import { ensureNameItem, matchFieldsToItems, planOverlay, valueFor } from '@/lib/forms/plan';
 import {
     matchField, PROFILE_LABELS, SENSITIVE_KEYS, usableProfile, withDerived,
     type Profile, type ProfileKey,
@@ -96,7 +96,8 @@ export function FormFiller() {
                 return;
             }
             const data = (await res.json()) as { explanation: Explanation };
-            setExplanation(data.explanation);
+            const lines = form.pages.flatMap((p) => p.lines);
+            setExplanation({ ...data.explanation, items: ensureNameItem(data.explanation.items, lines, language) });
             setPhase('explained');
         } catch {
             setError('Could not reach InBridge. Check your connection and try again.');
