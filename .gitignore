@@ -48,3 +48,6 @@ next-env.d.ts
 # /vector_store/
 # Claude Code personal settings (not shared)
 .claude/settings.local.json
+
+# tesseract.js caches language data in the working directory when run in Node
+*.traineddata
