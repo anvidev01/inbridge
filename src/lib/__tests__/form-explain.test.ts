@@ -72,5 +72,6 @@ describe('the prompt', () => {
         // Labels must stay findable on the page whatever language the explanation is in.
         assert.match(explainSystemPrompt('hinglish'), /Never transliterate/);
         assert.match(explainSystemPrompt('en'), /OCR junk/);
+        assert.match(explainSystemPrompt('en'), /never drop a blank/);
     });
 });
