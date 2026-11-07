@@ -54,9 +54,9 @@ Reply with ONLY one JSON object, no other text:
 - title: the form's name.
 - purpose: one or two sentences: what this form is for and who fills it.
 - items: EVERY blank the applicant must fill in or choose, in the order they appear on the form.
-  label: copy the words printed next to the blank EXACTLY as they appear in the text (keep the form's own language and spelling, at most 8 words).
+  label: copy the words printed next to the blank EXACTLY as they appear in the text, at most 8 words, WITHOUT the leading number. The label always stays in the form's own script and language (Devanagari stays Devanagari, English stays English), even when you explain in another language. Never transliterate or translate it. The text may contain OCR junk (stray letters, dots, symbols such as "covers", "ER", "LE"): leave junk out and copy only the real words.
   meaning: what to write there, one short sentence, with a format hint where useful (for example "date as dd/mm/yyyy").
-  key: one of ${PROFILE_KEYS.join(', ')} when the blank asks for exactly that detail, otherwise null.
+  key: one of ${PROFILE_KEYS.join(', ')} when the blank asks for exactly that detail, otherwise null. full_name is the applicant's own name; father_name is a father's, husband's or guardian's name; village_city is a village, town or city; address is the whole postal address.
   kind: "text" (write something), "choice" (tick or pick one option), "attachment" (a photo, stamp or document to attach), "signature" (signature or thumb impression), "office" (marked for office use only).
 - documents: documents or photocopies the form says to attach or that it clearly needs.
 - notes: important warnings that are PRINTED on the form (declaration, last date, fee, where to submit). Leave empty if none.
@@ -101,7 +101,7 @@ export function parseExplanation(raw: string): Explanation | null {
     for (const entry of Array.isArray(data.items) ? data.items.slice(0, MAX_ITEMS) : []) {
         if (!entry || typeof entry !== 'object') continue;
         const e = entry as Record<string, unknown>;
-        const label = clean(e.label, 120);
+        const label = clean(e.label, 120).replace(/^\(?\d{1,2}[.)]\s*/, '');
         if (!label) continue;
         const key = typeof e.key === 'string' && (PROFILE_KEYS as readonly string[]).includes(e.key) ? (e.key as ProfileKey) : null;
         const kind = KINDS.includes(e.kind as ItemKind) ? (e.kind as ItemKind) : 'text';

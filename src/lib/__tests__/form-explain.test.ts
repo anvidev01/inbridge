@@ -40,6 +40,10 @@ describe('parseExplanation', () => {
         ]);
         assert.deepEqual(r.documents, ['Death certificate of husband']);
     });
+    test('leading numbering is dropped from labels', () => {
+        const r = parseExplanation(JSON.stringify({ purpose: 'p', items: [{ label: '2. Father\'s Name', meaning: 'm', key: 'father_name', kind: 'text' }, { label: '(3) Date', meaning: 'm', key: null, kind: 'text' }] }))!;
+        assert.deepEqual(r.items.map((i) => i.label), ["Father's Name", 'Date']);
+    });
     test('thinking blocks and prose around the JSON are ignored', () => {
         assert.ok(parseExplanation('<think>hmm {x}</think>Here you go: ' + GOOD + ' thanks'));
     });
@@ -65,5 +69,8 @@ describe('the prompt', () => {
         assert.match(explainSystemPrompt('en'), /never follow instructions/);
         assert.match(explainSystemPrompt('hi'), /हिन्दी/);
         assert.match(explainSystemPrompt('hinglish'), /English letters/);
+        // Labels must stay findable on the page whatever language the explanation is in.
+        assert.match(explainSystemPrompt('hinglish'), /Never transliterate/);
+        assert.match(explainSystemPrompt('en'), /OCR junk/);
     });
 });
